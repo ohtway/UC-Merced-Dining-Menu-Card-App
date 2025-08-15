@@ -1,183 +1,468 @@
 # menu_card_maker.py
-# UC Merced Dining Services — Menu Card PDF Maker (v3)
-# - Title+Allergens rendered as a single centered block
-# - Adjustable gap between title and allergens (pt)
-# - Multiple pages (2x5 per page), Prev/Next in preview, multi-page PDF export
-# - Cards touch each other; first card offset 0.68" x, 0.44" y
-# - Long titles/allergens wrap and auto-shrink to fit
+# UC Merced Dining & Retail Services — Menu Card Maker (Visual + Performance Update)
+# - Enter key performs the exact same action as "Add Card"
+# - Colorful circular buttons with shadows for Allergens & Attributes
+# - Pill buttons with shadows for Artificial Colors & Textures
+# - Uses fonts from /fonts: Kievit Medium, Bebas Neue, Minion Pro Italic
+# - UC Merced Dining & Retail Services logo shown in UI
+# - Preview pages have diagonal #000→#182b49→#000 gradient; export is pure white
+# - Faster preview (150-DPI pipeline + cached gradient/icons/fonts)
 
-import os
-import math
+import os, math
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-from PIL import Image, ImageDraw, ImageFont, ImageTk
+from PIL import Image, ImageDraw, ImageFont, ImageTk, ImageFilter
 
-# ----------------------------- Page & Card Geometry --------------------------
+# --------- Project paths (relative to this file) ----------
+APP_DIR = os.path.dirname(__file__)
+PROJECT_ROOT = os.path.abspath(os.path.join(APP_DIR, os.pardir))
+FONTS_DIR = os.path.join(PROJECT_ROOT, "fonts")
+ICONS_DIR = os.path.join(PROJECT_ROOT, "icons")
 
-DPI = 300                    # render @300 DPI (crisp output)
-INCH = DPI
+FONT_BEBAS = os.path.join(FONTS_DIR, "BebasNeue-Regular.ttf")
+FONT_KIEVIT = os.path.join(FONTS_DIR, "Kievit Medium.ttf")
+FONT_MINION_ITAL = os.path.join(FONTS_DIR, "Minion Pro Italic.ttf")
+
+ICON_VEGAN = os.path.join(ICONS_DIR, "attributes_vegan_icon.png")
+ICON_HALAL = os.path.join(ICONS_DIR, "attributes_halal_icon.png")
+ICON_LOGO  = os.path.join(ICONS_DIR, "dining_logo.png")
+
+# --------- Geometry / DPI ----------
+EXPORT_DPI = 300
+PREVIEW_DPI = 150            # faster live preview
+INCH = EXPORT_DPI
 
 PAGE_W, PAGE_H = int(8.5*INCH), int(11*INCH)
-
 CARD_W_IN, CARD_H_IN = 3.57, 2.00
 CARD_W, CARD_H = int(CARD_W_IN*INCH), int(CARD_H_IN*INCH)
-
 START_X, START_Y = int(0.68*INCH), int(0.44*INCH)
-
 COLS, ROWS = 2, 5
-SLOTS_PER_PAGE = COLS * ROWS
-GAP_X = GAP_Y = 0           # cards touch each other
+SLOTS_PER_PAGE = COLS*ROWS
+GAP_X = GAP_Y = 0
+PREVIEW_SCALE = PREVIEW_DPI / EXPORT_DPI  # 0.5
 
-PREVIEW_SCALE = 0.35
-PREV_W, PREV_H = int(PAGE_W*PREVIEW_SCALE), int(PAGE_H*PREVIEW_SCALE)
-
-# Colors
-PAGE_PREVIEW_BG = (235, 235, 235)      # gray preview page
-PAGE_EXPORT_BG  = (255, 255, 255)      # white for PDF
-CARD_BG         = (255, 255, 255)
-BLACK           = (0, 0, 0)
-RED             = (200, 0, 0)
-
-# Top 9 allergens (FDA)
+# --------- Colors & tokens ----------
+HEX = lambda s: tuple(int(s[i:i+2], 16) for i in (1,3,5))
+PAGE_CONTAINER_BG = "#e5e5e5"
+PREVIEW_PAGE_GRAD = ("#000000", "#182b49", "#000000")
+CARD_BG = (255,255,255)
+BLACK  = (0,0,0)
+DARK_GREY = (68,59,59)
+ALLERGEN_COLORS = {
+    "Eggs": ("#ffe89a", "#fff6d8"),
+    "Milk": ("#ff9a9a", "#ffdbdb"),
+    "Wheat": ("#efb58f", "#ffd6d6"),
+    "Fish": ("#9acbff", "#dbedff"),
+    "Crustacean Shellfish": ("#e1a0e1", "#ffd4ff"),
+    "Soy": ("#c3ddb7", "#e9f6e3"),
+    "Sesame": ("#9b9b9b", "#cfcaca"),
+    "Peanuts": ("#ffc952", "#ffe7b2"),
+    "Tree Nuts": ("#91c4b9", "#dbdbdb"),
+    "CC_ALL": ("#bb8585", "#d8b4b4"),
+    "CUSTOM": ("#ebebeb", "#ebdfdf"),
+}
+ARTIFICIAL = {
+    "Red 40":   (("#ff8181", "#ff9a9a"), "#800000"),
+    "Yellow 5": (("#fffa81", "#f4e4a2"), "#807700"),
+    "Blue 1":   (("#81bfff", "#c8fcff"), "#3d96a2"),
+    "Blue 2":   (("#81bfff", "#c2d5ff"), "#3d6ba2"),
+    "Green 3":  (("#abebbe", "#e3ffd7"), "#275213"),
+}
+TEXTURES = ["Carrageenan", "Xanthan gum", "Cellulose gum", "Polysorbates"]
 TOP9 = ["Milk","Eggs","Fish","Crustacean Shellfish","Tree Nuts","Peanuts","Wheat","Soy","Sesame"]
 
-# ----------------------------- Data ------------------------------------------
+BTN_STROKE = 5
+SHADOW = dict(blur=40, offset=(25,25), alpha=120)  # soft UI shadow
+PRESSED_NUDGE = (2,2)
 
+# --------- Caches for speed ----------
+_font_cache = {}
+_icon_cache = {}
+_grad_cache = {}
+
+def load_font(path, pt):
+    key = (path, int(pt))
+    if key in _font_cache: return _font_cache[key]
+    try:
+        f = ImageFont.truetype(path, int(round(pt)))
+    except Exception:
+        # system fallbacks
+        fallbacks = [
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+            "C:/Windows/Fonts/arial.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+        for fb in fallbacks:
+            try: f = ImageFont.truetype(fb, int(round(pt))); break
+            except: f = ImageFont.load_default()
+    _font_cache[key] = f
+    return f
+
+def load_icon(path, size):
+    key = (path, size)
+    if key in _icon_cache: return _icon_cache[key]
+    if not os.path.isfile(path): return None
+    img = Image.open(path).convert("RGBA").resize((size,size), Image.LANCZOS)
+    _icon_cache[key] = img
+    return img
+
+def make_shadow(size, blur=40, offset=(25,25), alpha=120, shape="ellipse", radius=18):
+    w,h = size
+    pad = blur*2+max(offset)
+    img = Image.new("RGBA", (w+pad, h+pad), (0,0,0,0))
+    sh = Image.new("L", (w, h), 0)
+    d = ImageDraw.Draw(sh)
+    if shape == "ellipse":
+        d.ellipse([0,0,w-1,h-1], fill=alpha)
+    else: # rounded rect
+        d.rounded_rectangle([0,0,w-1,h-1], radius=radius, fill=alpha)
+    sh = sh.filter(ImageFilter.GaussianBlur(blur))
+    img.paste(Image.new("RGBA", sh.size, (0,0,0,255)), (offset[0], offset[1]), sh)
+    return img
+
+def circle_button_image(diameter, fill_hex, outline_hex, stroke=BTN_STROKE,
+                        icon_path=None, pressed=False):
+    # base canvas
+    sh = make_shadow((diameter, diameter), **SHADOW)
+    w,h = sh.size
+    img = Image.new("RGBA", (w,h), (0,0,0,0))
+    if pressed:
+        # reduce shadow by blending with transparency & nudge
+        sh = sh.copy()
+        sh.putalpha(int(0.6*SHADOW["alpha"]))
+        img.alpha_composite(sh, (0,0))
+        nudge = PRESSED_NUDGE
+    else:
+        img.alpha_composite(sh, (0,0))
+        nudge = (0,0)
+
+    d = ImageDraw.Draw(img)
+    x = SHADOW["offset"][0]//2 + SHADOW["blur"] - nudge[0]
+    y = SHADOW["offset"][1]//2 + SHADOW["blur"] - nudge[1]
+    bbox = [x,y,x+diameter-1,y+diameter-1]
+    d.ellipse(bbox, fill=HEX(fill_hex), outline=HEX(outline_hex), width=stroke)
+
+    if icon_path and os.path.isfile(icon_path):
+        icon_sz = int(diameter*0.62)
+        ic = load_icon(icon_path, icon_sz)
+        if ic:
+            # center
+            ix = x + (diameter - icon_sz)//2
+            iy = y + (diameter - icon_sz)//2
+            img.alpha_composite(ic, (ix, iy))
+    return img
+
+def pill_button_image(width, height, fill_hex, outline_hex, label, label_color="#443b3b",
+                      left_glyph=None, pressed=False):
+    sh = make_shadow((width, height), **SHADOW, shape="roundrect", radius=int(height*0.5))
+    w,h = sh.size
+    img = Image.new("RGBA", (w,h), (0,0,0,0))
+    if pressed:
+        sh.putalpha(int(0.6*SHADOW["alpha"]))
+        img.alpha_composite(sh, (0,0))
+        nudge = PRESSED_NUDGE
+    else:
+        img.alpha_composite(sh, (0,0))
+        nudge = (0,0)
+    d = ImageDraw.Draw(img)
+    x = SHADOW["offset"][0]//2 + SHADOW["blur"] - nudge[0]
+    y = SHADOW["offset"][1]//2 + SHADOW["blur"] - nudge[1]
+    bbox = [x,y,x+width-1,y+height-1]
+    d.rounded_rectangle(bbox, radius=height//2, fill=HEX(fill_hex), outline=HEX(outline_hex), width=BTN_STROKE)
+
+    # left glyph (small circle with +) if provided
+    if left_glyph == "plus":
+        cx = x + int(height*0.35)
+        cy = y + height//2
+        r  = int(height*0.28)
+        d.ellipse([cx-r, cy-r, cx+r, cy+r], outline=HEX("#6b6b6b"), width=2, fill=None)
+        # plus sign
+        d.line([cx-r+4,cy, cx+r-4,cy], fill=HEX("#6b6b6b"), width=2)
+        d.line([cx,cy-r+4, cx,cy+r-4], fill=HEX("#6b6b6b"), width=2)
+
+    # label
+    font = load_font(FONT_KIEVIT, int(height*0.42))
+    tw = d.textbbox((0,0), label, font=font)[2]
+    text_x = x + int(height*0.7)
+    if tw > width - (height*0.9):
+        # shrink if needed
+        scale = (width - (height*0.9)) / max(1, tw)
+        font = load_font(FONT_KIEVIT, max(10, int(height*0.42*scale)))
+    d.text((text_x, y + height*0.25), label, font=font, fill=HEX(label_color))
+    return img
+
+def preview_gradient(w, h):
+    key = (w,h)
+    if key in _grad_cache: return _grad_cache[key]
+    # Make a small diagonal gradient then upscale (fast)
+    base = 256
+    g = Image.new("RGB", (base, base))
+    p = g.load()
+    c0, c1, c2 = map(HEX, PREVIEW_PAGE_GRAD)
+    for y in range(base):
+        for x in range(base):
+            t = (x + y) / (2*base-2)
+            if t < 0.5:
+                u = t*2
+                rgb = (
+                    int(c0[0] + u*(c1[0]-c0[0])),
+                    int(c0[1] + u*(c1[1]-c0[1])),
+                    int(c0[2] + u*(c1[2]-c0[2])),
+                )
+            else:
+                u = (t-0.5)*2
+                rgb = (
+                    int(c1[0] + u*(c2[0]-c1[0])),
+                    int(c1[1] + u*(c2[1]-c1[1])),
+                    int(c1[2] + u*(c2[2]-c1[2])),
+                )
+            p[x,y] = rgb
+    g = g.resize((w,h), Image.LANCZOS)
+    _grad_cache[key] = g
+    return g
+
+# --------- Data model ----------
 class MenuCard:
-    def __init__(self, title, allergens):
+    def __init__(self, title, allergens, cc_all=False, attributes=None,
+                 artificial_colors=None, textures=None):
         self.title = title.strip()
         self.allergens = [a for a in TOP9 if a in allergens]
+        self.cc_all = bool(cc_all)
+        self.attributes = set(attributes or set())
+        self.artificial_colors = list(artificial_colors or [])
+        self.textures = list(textures or [])
 
     @property
     def allergens_line(self):
-        return "Allergens: " + (", ".join(self.allergens) + "." if self.allergens else "None")
+        if self.cc_all:
+            return "CC: May Contain All Allergens"
+        if not self.allergens:
+            return ""  # per spec: omit if none
+        return "Allergens: " + ", ".join(self.allergens)
 
-# ----------------------------- App -------------------------------------------
+    @property
+    def contains_line(self):
+        bits = []
+        if self.artificial_colors: bits.extend(self.artificial_colors)
+        if self.textures: bits.extend(self.textures)
+        return ("Contains: " + ", ".join(bits)) if bits else ""
 
+# --------- App ----------
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("UC Merced Dining — Menu Card PDF Maker")
-        self.geometry("1120x780")
-        self.cards = []                   # all cards across pages
-        self.page = 0                     # current page index (0-based)
-        self.sel_slot = None              # selected slot on current page (0..9)
-        self.preview_img = None
+        self.title("Menu Card Maker")
+        self.geometry("1360x860")
+        self.configure(bg="#2b2b2b")
 
-        # Font controls
-        self.item_pt = tk.IntVar(value=100)
-        self.all_pt  = tk.IntVar(value=50)
-        self.gap_pt  = tk.IntVar(value=22)        # distance between title & allergens
-        self.path_calibri = tk.StringVar(value="")
-        self.path_bebas   = tk.StringVar(value="")
+        # State
+        self.cards = []
+        self.sel_global_idx = None
+
+        # Inputs
+        self.item_var = tk.StringVar()
+        self.all_vars = {a: tk.BooleanVar(value=False) for a in TOP9}
+        self.cc_var = tk.BooleanVar(value=False)
+        self.attr_vegan = tk.BooleanVar(value=False)
+        self.attr_halal = tk.BooleanVar(value=False)
+        self.art_vars = {k: tk.BooleanVar(value=False) for k in ARTIFICIAL}
+        self.tex_vars = {k: tk.BooleanVar(value=False) for k in TEXTURES}
+
+        # Typography
+        self.item_pt = tk.IntVar(value=100)     # Kievit
+        self.all_pt  = tk.IntVar(value=50)      # Bebas
+        self.contains_pt = tk.IntVar(value=46)  # Bebas
+        self.gap_pt  = tk.IntVar(value=18)
+
+        # Preview caches
+        self.page_img_tk = []
+        self.page_offsets = []
 
         self._build_ui()
-        self._render_preview()
+        self._render_all_previews()
 
+        # Keyboard
         self.bind("<BackSpace>", self._delete_selected)
         self.bind("<Delete>", self._delete_selected)
+        self.bind("<Return>", lambda e: self._add_card())  # Enter = Add Card
 
-    # ----------------------- UI -----------------------
-
+    # ------------- UI -------------
     def _build_ui(self):
-        root = ttk.Frame(self, padding=10); root.pack(fill="both", expand=True)
+        root = ttk.Frame(self, padding=10)
+        root.pack(fill="both", expand=True)
+        root.columnconfigure(1, weight=1)
+        root.rowconfigure(0, weight=1)
 
-        left = ttk.Frame(root); left.pack(side="left", fill="y", padx=(0,10))
-        ttk.Label(left, text="Add Menu Card", font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(0,6))
+        # LEFT
+        left = ttk.Frame(root)
+        left.grid(row=0, column=0, sticky="nsw", padx=(0,10))
+        # Title + version/instructions (Minion Italic)
+        ttk.Label(left, text="Menu Card Maker", font=("Helvetica", 18, "bold")).pack(anchor="w")
+        ttk.Label(left, text="Version 1.0.5\nPress Enter to Add a card. Click a card and press Backspace to delete.",
+                  font=("Helvetica", 10, "italic")).pack(anchor="w", pady=(0,8))
 
-        self.item_var = tk.StringVar()
-        row = ttk.Frame(left); row.pack(fill="x", pady=4)
-        ttk.Label(row, text="Item name:").pack(side="left")
-        ttk.Entry(row, textvariable=self.item_var, width=28).pack(side="left", padx=6)
+        # Item
+        r = ttk.Frame(left); r.pack(fill="x", pady=(2,6))
+        ttk.Label(r, text="Item Name:").pack(side="left")
+        e = ttk.Entry(r, textvariable=self.item_var, width=32)
+        e.pack(side="left", padx=(6,0))
 
-        ttk.Label(left, text="Allergens:").pack(anchor="w")
-        self.all_vars = {}
-        grid = ttk.Frame(left); grid.pack(anchor="w", pady=2)
-        for i, a in enumerate(TOP9):
-            v = tk.BooleanVar(value=False); self.all_vars[a]=v
-            ttk.Checkbutton(grid, text=a, variable=v).grid(row=i//2, column=i%2, sticky="w", padx=(0,12))
+        # ---- Pretty buttons area ----
+        pretty = ttk.Frame(left); pretty.pack(anchor="w", pady=(6,4))
+        # Allergens grid
+        ttk.Label(pretty, text="Allergens:").grid(row=0, column=0, sticky="w")
+        ag = ttk.Frame(pretty); ag.grid(row=1, column=0, columnspan=2, sticky="w")
+        self._build_allergen_buttons(ag)
 
-        fr = ttk.Frame(left); fr.pack(anchor="w", pady=6)
-        ttk.Label(fr, text="Item font (pt):").grid(row=0, column=0, sticky="w")
-        ttk.Spinbox(fr, from_=24, to=200, width=5, textvariable=self.item_pt, command=self._render_preview).grid(row=0, column=1, padx=6)
-        ttk.Label(fr, text="Allergen font (pt):").grid(row=1, column=0, sticky="w", pady=2)
-        ttk.Spinbox(fr, from_=10, to=120, width=5, textvariable=self.all_pt, command=self._render_preview).grid(row=1, column=1, padx=6)
-        ttk.Label(fr, text="Gap between lines (pt):").grid(row=2, column=0, sticky="w", pady=2)
-        ttk.Spinbox(fr, from_=0, to=80, width=5, textvariable=self.gap_pt, command=self._render_preview).grid(row=2, column=1, padx=6)
+        # Attributes
+        ttk.Label(pretty, text="Attributes:").grid(row=0, column=2, sticky="w", padx=(16,0))
+        at = ttk.Frame(pretty); at.grid(row=1, column=2, sticky="w", padx=(16,0))
+        self._build_attribute_buttons(at)
 
-        f1 = ttk.Frame(left); f1.pack(fill="x", pady=(8,2))
-        ttk.Label(f1, text="Calibri TTF (optional):").pack(side="left")
-        ttk.Entry(f1, textvariable=self.path_calibri, width=24).pack(side="left", padx=6)
-        ttk.Button(f1, text="Browse", command=lambda:self._browse(self.path_calibri)).pack(side="left")
+        # Artificial colors & textures (pills)
+        ttk.Label(pretty, text="Artificial Colors:").grid(row=2, column=0, sticky="w", pady=(8,0))
+        ac = ttk.Frame(pretty); ac.grid(row=3, column=0, sticky="w")
+        self._build_artificial_color_pills(ac)
 
-        f2 = ttk.Frame(left); f2.pack(fill="x", pady=2)
-        ttk.Label(f2, text="Bebas Neue TTF:").pack(side="left")
-        ttk.Entry(f2, textvariable=self.path_bebas, width=24).pack(side="left", padx=6)
-        ttk.Button(f2, text="Browse", command=lambda:self._browse(self.path_bebas)).pack(side="left")
+        ttk.Label(pretty, text="Texture & Stabilizers:").grid(row=2, column=2, sticky="w", padx=(16,0), pady=(8,0))
+        tx = ttk.Frame(pretty); tx.grid(row=3, column=2, sticky="w", padx=(16,0))
+        self._build_texture_pills(tx)
 
-        b = ttk.Frame(left); b.pack(anchor="w", pady=8)
-        ttk.Button(b, text="Add Card", command=self._add_card).pack(side="left")
-        ttk.Button(b, text="Clear All", command=self._clear_all).pack(side="left", padx=6)
-        ttk.Button(b, text="Export PDF…", command=self._export_pdf).pack(side="left", padx=6)
+        # CC checkbox (separate)
+        ttk.Checkbutton(left, text="CC: May Contain All Allergens",
+                        variable=self.cc_var, command=self._render_all_previews).pack(anchor="w", pady=(6,8))
 
-        # Page controls
-        nav = ttk.Frame(left); nav.pack(anchor="w", pady=(10,0))
-        ttk.Button(nav, text="◀ Prev", command=self._prev_page).pack(side="left")
-        ttk.Button(nav, text="Next ▶", command=self._next_page).pack(side="left", padx=6)
-        self.page_lbl = ttk.Label(nav, text="Page 1 / 1"); self.page_lbl.pack(side="left", padx=6)
+        # Type controls
+        ctrl = ttk.Frame(left); ctrl.pack(anchor="w", pady=(4,6))
+        ttk.Label(ctrl, text="Item font (pt):").grid(row=0, column=0, sticky="w")
+        ttk.Spinbox(ctrl, from_=24, to=200, width=5, textvariable=self.item_pt,
+                    command=self._render_all_previews).grid(row=0, column=1, padx=6)
+        ttk.Label(ctrl, text="Allergen font (pt):").grid(row=1, column=0, sticky="w", pady=2)
+        ttk.Spinbox(ctrl, from_=10, to=120, width=5, textvariable=self.all_pt,
+                    command=self._render_all_previews).grid(row=1, column=1, padx=6)
+        ttk.Label(ctrl, text='"Contains:" font (pt):').grid(row=2, column=0, sticky="w", pady=2)
+        ttk.Spinbox(ctrl, from_=10, to=120, width=5, textvariable=self.contains_pt,
+                    command=self._render_all_previews).grid(row=2, column=1, padx=6)
+        ttk.Label(ctrl, text="Gap (pt):").grid(row=3, column=0, sticky="w", pady=2)
+        ttk.Spinbox(ctrl, from_=0, to=80, width=5, textvariable=self.gap_pt,
+                    command=self._render_all_previews).grid(row=3, column=1, padx=6)
 
-        self.count_lbl = ttk.Label(left, text="0 cards total")
-        self.count_lbl.pack(anchor="w", pady=(8,0))
+        # Buttons
+        bbar = ttk.Frame(left); bbar.pack(anchor="w", pady=(8,6))
+        ttk.Button(bbar, text="Add Card", command=self._add_card).pack(side="left", padx=(0,6))
+        ttk.Button(bbar, text="Clear All", command=self._clear_all).pack(side="left", padx=(0,6))
+        ttk.Button(bbar, text="Export PDF…", command=self._export_pdf).pack(side="left")
 
-        ttk.Separator(root, orient="vertical").pack(side="left", fill="y")
+        # Logo
+        if os.path.isfile(ICON_LOGO):
+            logo_img = Image.open(ICON_LOGO).convert("RGBA").resize((90,42), Image.LANCZOS)
+            self._logo_tk = ImageTk.PhotoImage(logo_img)
+            tk.Label(left, image=self._logo_tk).pack(anchor="w", pady=(12,2))
 
-        right = ttk.Frame(root); right.pack(side="left", fill="both", expand=True)
-        ttk.Label(right, text="Preview (click card to select; Backspace/Delete to remove)").pack(anchor="w")
-        self.canvas = tk.Canvas(right, width=PREV_W, height=PREV_H, highlightthickness=0, bg="#bfbfbf")
-        self.canvas.pack(expand=True)
-        self.canvas.bind("<Button-1>", self._click_preview)
+        self.count_lbl = ttk.Label(left, text="0 cards total"); self.count_lbl.pack(anchor="w")
 
-    def _browse(self, var):
-        p = filedialog.askopenfilename(title="Choose TTF font", filetypes=[("TrueType Font","*.ttf"),("All files","*.*")])
-        if p: var.set(p); self._render_preview()
+        # RIGHT preview
+        right = ttk.Frame(root); right.grid(row=0, column=1, sticky="nsew")
+        right.columnconfigure(0, weight=1); right.rowconfigure(1, weight=1)
+        ttk.Label(right, text="Preview — scroll; click a card to select; Backspace/Delete to remove").grid(row=0,column=0,sticky="w")
 
-    # ----------------------- Card ops -----------------------
+        self.canvas = tk.Canvas(right, bg=PAGE_CONTAINER_BG, highlightthickness=0)
+        self.canvas.grid(row=1, column=0, sticky="nsew")
+        vbar = ttk.Scrollbar(right, orient="vertical", command=self.canvas.yview)
+        vbar.grid(row=1, column=1, sticky="ns")
+        self.canvas.configure(yscrollcommand=vbar.set, yscrollincrement=1)
+        self.canvas.bind("<Enter>", lambda e: self.canvas.focus_set())
+        self.canvas.bind("<MouseWheel>", self._on_mousewheel)
+        self.canvas.bind("<Button-4>", self._on_mousewheel)
+        self.canvas.bind("<Button-5>", self._on_mousewheel)
+        self.canvas.bind("<Button-1>", self._on_click_preview)
 
-    def _add_card(self):
-        t = self.item_var.get().strip()
-        if not t: messagebox.showwarning("Missing", "Enter an item name."); return
-        sel = [a for a,v in self.all_vars.items() if v.get()]
-        self.cards.append(MenuCard(t, sel))
-        self.item_var.set(""); [v.set(False) for v in self.all_vars.values()]
-        self.sel_slot = None
-        # Jump to last page automatically to see the new card
-        self.page = self.total_pages()-1
-        self._render_preview()
+    # ------ Pretty controls builders ------
+    def _toggle_and_refresh(self, var):
+        var.set(not var.get()); self._render_all_previews()
 
-    def _clear_all(self):
-        if not self.cards: return
-        if messagebox.askyesno("Clear all", "Remove all cards from all pages?"):
-            self.cards.clear(); self.page=0; self.sel_slot=None; self._render_preview()
+    def _build_allergen_buttons(self, parent):
+        self._btn_imgs = []  # keep references
+        size = 74
+        mapping = [
+            ("Eggs","allergen_egg_icon.png"),
+            ("Milk","allergen_milk_icon.png"),
+            ("Wheat","allergen_wheat_icon.png"),
+            ("Fish","allergen_fish_icon.png"),
+            ("Crustacean Shellfish","allergen_shellfish_icon.png"),
+            ("Soy","allergen_soy_icon.png"),
+            ("Sesame","texture_and_stabilizer_icon.png"),  # no sesame icon provided name? using placeholder if missing
+            ("Peanuts","allergen_peanuts_icon.png"),
+            ("Tree Nuts","allergen_tree-nuts_icon.png"),
+        ]
+        for i,(name,icon_file) in enumerate(mapping):
+            fill, outline = ALLERGEN_COLORS.get(name, ("#ebebeb","#ebdfdf"))
+            icon_path = os.path.join(ICONS_DIR, icon_file)
+            img = circle_button_image(size, fill, outline, BTN_STROKE, icon_path, pressed=False)
+            img_tk = ImageTk.PhotoImage(img)
+            self._btn_imgs.append(img_tk)
 
-    # ----------------------- Paging -----------------------
+            def handler(n=name, v=self.all_vars[name]):
+                self._toggle_and_refresh(v)
+            lbl = tk.Label(parent, image=img_tk, cursor="hand2")
+            lbl.grid(row=i//3, column=i%3, padx=6, pady=6)
+            lbl.bind("<Button-1>", lambda _e, h=handler: h())
 
-    def total_pages(self):
-        return max(1, math.ceil(len(self.cards)/SLOTS_PER_PAGE))
+    def _build_attribute_buttons(self, parent):
+        self._attr_imgs = []
+        size = 74
+        # Halal (render icon as-is; its original art is "menu card state"; for button we'll recolor via black tint)
+        for name, icon_path, var in [
+            ("Halal", ICON_HALAL, self.attr_halal),
+            ("Vegan", ICON_VEGAN, self.attr_vegan),
+        ]:
+            # button shell
+            fill, outline = "#efeeee", "#fff8f8"
+            img = circle_button_image(size, fill, outline, BTN_STROKE, icon_path, pressed=False)
+            img_tk = ImageTk.PhotoImage(img)
+            self._attr_imgs.append(img_tk)
 
-    def _prev_page(self):
-        if self.page > 0:
-            self.page -= 1
-            self.sel_slot = None
-            self._render_preview()
+            def handler(v=var):
+                self._toggle_and_refresh(v)
+            lbl = tk.Label(parent, image=img_tk, cursor="hand2")
+            lbl.pack(side="left", padx=6)
+            lbl.bind("<Button-1>", lambda _e, h=handler: h())
 
-    def _next_page(self):
-        if self.page < self.total_pages()-1:
-            self.page += 1
-            self.sel_slot = None
-            self._render_preview()
+    def _build_artificial_color_pills(self, parent):
+        self._pill_imgs = []
+        for name,(fills,text_hex) in ARTIFICIAL.items():
+            fill, outline = fills
+            img = pill_button_image(210, 36, fill, outline, name, label_color=text_hex, left_glyph="plus")
+            tkimg = ImageTk.PhotoImage(img); self._pill_imgs.append(tkimg)
+            def handler(v=self.art_vars[name]):
+                self._toggle_and_refresh(v)
+            lbl = tk.Label(parent, image=tkimg, cursor="hand2"); lbl.pack(anchor="w", pady=4)
+            lbl.bind("<Button-1>", lambda _e, h=handler: h())
 
-    # ----------------------- Geometry helpers -----------------------
+    def _build_texture_pills(self, parent):
+        self._tex_imgs = []
+        for name in TEXTURES:
+            img = pill_button_image(230, 36, "#efeeee", "#fff8f8", name, label_color="#443b3b")
+            tkimg = ImageTk.PhotoImage(img); self._tex_imgs.append(tkimg)
+            def handler(v=self.tex_vars[name]):
+                self._toggle_and_refresh(v)
+            lbl = tk.Label(parent, image=tkimg, cursor="hand2"); lbl.pack(anchor="w", pady=4)
+            lbl.bind("<Button-1>", lambda _e, h=handler: h())
 
+    # ------------- Text layout helpers -------------
+    def _wrap(self, draw, text, font, max_w):
+        if not text: return [], 0, 0
+        words = text.split(); lines=[]; cur=""
+        for w in words:
+            t = (cur+" "+w).strip()
+            wbox = draw.textbbox((0,0), t, font=font)
+            if wbox[2]-wbox[0] <= max_w or not cur: cur=t
+            else: lines.append(cur); cur=w
+        if cur: lines.append(cur)
+        lh = draw.textbbox((0,0),"Ag",font=font)[3]
+        return lines, lh, max(draw.textbbox((0,0),ln,font=font)[2] for ln in lines)
+
+    # ------------- Rendering -------------
     def _rects(self):
         rects=[]
         for r in range(ROWS):
@@ -187,220 +472,244 @@ class App(tk.Tk):
                 rects.append((x0,y0,x0+CARD_W,y0+CARD_H))
         return rects
 
-    def _idx_at(self, x, y):
-        """Return slot index 0..9 on current page if a filled card was clicked."""
-        for slot,(x0,y0,x1,y1) in enumerate(self._rects()):
-            global_idx = self.page*SLOTS_PER_PAGE + slot
-            if global_idx < len(self.cards) and x0<=x<=x1 and y0<=y<=y1:
-                return slot
-        return None
+    def _draw_legibility_radial(self, base_img, center_xy, radius, opacity=200):
+        size = radius*2
+        grad = Image.new("L", (size,size), 0)
+        px = grad.load()
+        for y in range(size):
+            for x in range(size):
+                dx = x-radius; dy=y-radius
+                t = max(0.0, min(1.0, 1.0-((dx*dx+dy*dy)**0.5)/radius))
+                px[x,y] = int(t*opacity)
+        white = Image.new("RGBA", (size,size), (255,255,255,0))
+        white.putalpha(grad)
+        base_img.alpha_composite(white, (center_xy[0]-radius, center_xy[1]-radius))
 
-    # ----------------------- Fonts -----------------------
+    def _fit_block(self, draw, card, box, gap_px):
+        x0,y0,x1,y1 = box
+        W,H = x1-x0, y1-y0
+        f_title = load_font(FONT_KIEVIT, self.item_pt.get())
+        f_all   = load_font(FONT_BEBAS,  self.all_pt.get())
+        f_cont  = load_font(FONT_BEBAS,  self.contains_pt.get())
 
-    def _truetype(self, pref, pt, extra=[]):
-        # User-provided first
-        if pref and os.path.isfile(pref):
-            try: return ImageFont.truetype(pref, int(round(pt)))
-            except: pass
-        # Provided names/paths
-        for f in extra:
-            try: return ImageFont.truetype(f, int(round(pt)))
-            except: continue
-        # Common system paths
-        system = [
-            r"C:\Windows\Fonts\calibri.ttf", r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\arialbd.ttf",
-            "/System/Library/Fonts/Supplemental/Calibri.ttf", "/System/Library/Fonts/Supplemental/Arial.ttf",
-            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-        ]
-        for f in system:
-            try: return ImageFont.truetype(f, int(round(pt)))
-            except: continue
-        return ImageFont.load_default()
+        # Compose lines
+        t_lines, t_lh, t_bw = self._wrap(draw, card.title, f_title, W)
+        a_text = card.allergens_line
+        c_text = card.contains_line
+        a_lines, a_lh, a_bw = self._wrap(draw, a_text, f_all, W) if a_text else ([],0,0)
+        c_lines, c_lh, c_bw = self._wrap(draw, c_text, f_cont, W) if c_text else ([],0,0)
 
-    # ----------------------- Text fitting -----------------------
+        # Compute total height
+        total = t_lh*len(t_lines)
+        if a_lines: total += gap_px + a_lh*len(a_lines)
+        if c_lines: total += gap_px + c_lh*len(c_lines)
 
-    def _wrap_and_measure(self, draw, text, font, max_w):
-        """Greedy word-wrap. Returns (lines, line_height, block_w, block_h)."""
-        words = text.split()
-        lines=[]
-        cur=""
-        for w in words:
-            trial = (cur+" "+w).strip()
-            wbox = draw.textbbox((0,0), trial, font=font)
-            if wbox[2]-wbox[0] <= max_w or not cur:
-                cur = trial
-            else:
-                lines.append(cur); cur=w
-        if cur: lines.append(cur)
-        # approximate consistent line height
-        metrics = draw.textbbox((0,0), "Ag", font=font)
-        lh = metrics[3]-metrics[1]
-        block_w = 0
-        for ln in lines:
-            w = draw.textbbox((0,0), ln, font=font)[2]
-            block_w = max(block_w, w)
-        block_h = lh*len(lines)
-        return lines, lh, block_w, block_h
-
-    def _fit_block(self, draw, title, allergens, target_box, title_pt, all_pt, gap_px, min_title_pt=18, min_all_pt=12):
-        """Fit wrapped title and wrapped allergens inside target_box by shrinking font sizes."""
-        x0,y0,x1,y1 = target_box
-        avail_w = x1-x0
-        avail_h = y1-y0
-
-        # Candidate font lists
-        calibri_list = [
-            self.path_calibri.get(),
-            "calibri.ttf", "Calibri.ttf",
-            r"C:\Windows\Fonts\calibri.ttf",
-            "/System/Library/Fonts/Supplemental/Calibri.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        ]
-        bebas_list = [
-            self.path_bebas.get(),
-            "BebasNeue-Regular.ttf","BebasNeue.ttf",
-            r"C:\Windows\Fonts\arialbd.ttf",
-            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        ]
-
-        t_pt = int(round(title_pt))
-        a_pt = int(round(all_pt))
-
-        def measure(tpt, apt):
-            t_font = self._truetype(calibri_list[0], tpt, calibri_list[1:])
-            a_font = self._truetype(bebas_list[0],   apt, bebas_list[1:])
-            t_lines, t_lh, t_bw, t_bh = self._wrap_and_measure(draw, title,    t_font, avail_w)
-            a_lines, a_lh, a_bw, a_bh = self._wrap_and_measure(draw, allergens, a_font, avail_w)
-            total_h = t_bh + gap_px + a_bh
-            max_w = max(t_bw, a_bw)
-            return (t_font, a_font, t_lines, a_lines, t_lh, a_lh, total_h, max_w)
-
-        # shrink iteratively until it fits
-        while t_pt >= min_title_pt and a_pt >= min_all_pt:
-            t_font, a_font, t_lines, a_lines, t_lh, a_lh, total_h, max_w = measure(t_pt, a_pt)
-            if total_h <= avail_h and max_w <= avail_w:
-                # draw centered block
-                cx = x0 + avail_w//2
-                top = y0 + (avail_h - total_h)//2
-                y = top
-                for ln in t_lines:
-                    w = draw.textbbox((0,0), ln, font=t_font)[2]
-                    draw.text((cx - w//2, y), ln, font=t_font, fill=BLACK)
-                    y += t_lh
-                y += gap_px
-                for ln in a_lines:
-                    w = draw.textbbox((0,0), ln, font=a_font)[2]
-                    draw.text((cx - w//2, y), ln, font=a_font, fill=RED)
-                    y += a_lh
-                return
-            # reduce the larger contributor first
-            if total_h > avail_h or max_w > avail_w:
-                if t_pt >= a_pt:
-                    t_pt -= 2
-                else:
-                    a_pt -= 2
+        # Simple shrink loop
+        t_pt = self.item_pt.get(); a_pt = self.all_pt.get(); c_pt = self.contains_pt.get()
+        while total > H:
+            # shrink the biggest
+            if t_pt >= a_pt and t_pt >= c_pt and t_pt > 18:
+                t_pt -= 2; f_title = load_font(FONT_KIEVIT, t_pt)
+            elif a_pt >= c_pt and a_pt > 12 and a_lines:
+                a_pt -= 2; f_all = load_font(FONT_BEBAS, a_pt)
+            elif c_pt > 12 and c_lines:
+                c_pt -= 2; f_cont = load_font(FONT_BEBAS, c_pt)
             else:
                 break
+            t_lines, t_lh, t_bw = self._wrap(draw, card.title, f_title, W)
+            a_lines, a_lh, a_bw = (self._wrap(draw, a_text, f_all, W) if a_text else ([],0,0))
+            c_lines, c_lh, c_bw = (self._wrap(draw, c_text, f_cont, W) if c_text else ([],0,0))
+            total = t_lh*len(t_lines) + (gap_px + a_lh*len(a_lines) if a_lines else 0) + \
+                    (gap_px + c_lh*len(c_lines) if c_lines else 0)
 
-        # Last resort: draw single lines at min sizes
-        t_font = self._truetype(calibri_list[0], max(min_title_pt, 12), calibri_list[1:])
-        a_font = self._truetype(bebas_list[0],   max(min_all_pt, 10),   bebas_list[1:])
-        cx = x0 + avail_w//2; cy = y0 + avail_h//2
-        draw.text((cx, cy), title[:40]+"…", font=t_font, fill=BLACK, anchor="mm")
-        draw.text((cx, cy+int(12/72*DPI)), allergens[:40]+"…", font=a_font, fill=RED, anchor="mm")
+        # Center vertically
+        y = y0 + (H-total)//2
+        cx = x0 + W//2
 
-    # ----------------------- Drawing -----------------------
+        for ln in t_lines:
+            w = draw.textbbox((0,0), ln, font=f_title)[2]
+            draw.text((cx - w//2, y), ln, font=f_title, fill=BLACK); y += t_lh
+        if a_lines:
+            y += gap_px
+            for ln in a_lines:
+                w = draw.textbbox((0,0), ln, font=f_all)[2]
+                draw.text((cx - w//2, y), ln, font=f_all, fill=(200,0,0)); y += a_lh
+        if c_lines:
+            y += gap_px
+            for ln in c_lines:
+                w = draw.textbbox((0,0), ln, font=f_cont)[2]
+                draw.text((cx - w//2, y), ln, font=f_cont, fill=DARK_GREY); y += c_lh
 
-    def _page_image(self, page_index, export=False):
-        bg = PAGE_EXPORT_BG if export else PAGE_PREVIEW_BG
-        img = Image.new("RGB", (PAGE_W, PAGE_H), bg)
-        draw = ImageDraw.Draw(img)
+    def _page_image(self, page_idx, export=False, highlight=None):
+        if export:
+            base = Image.new("RGB", (PAGE_W, PAGE_H), (255,255,255)).convert("RGBA")
+        else:
+            base = preview_gradient(PAGE_W, PAGE_H).convert("RGBA")
 
-        pad = int(0.18*INCH)        # inner padding
-        gap_px = int(self.gap_pt.get()/72.0 * DPI)
-
+        draw = ImageDraw.Draw(base)
+        pad = int(0.18*INCH)
+        gap_px = int(self.gap_pt.get()/72.0 * EXPORT_DPI)
         rects = self._rects()
-        start_idx = page_index * SLOTS_PER_PAGE
-
+        start = page_idx*SLOTS_PER_PAGE
         for slot,(x0,y0,x1,y1) in enumerate(rects):
             draw.rectangle([x0,y0,x1,y1], fill=CARD_BG)
-            idx = start_idx + slot
+            idx = start+slot
             if idx < len(self.cards):
                 card = self.cards[idx]
-                # Fit title+allergens as one centered block
-                self._fit_block(
-                    draw,
-                    card.title,
-                    card.allergens_line,
-                    (x0+pad, y0+pad, x1-pad, y1-pad),
-                    self.item_pt.get(),
-                    self.all_pt.get(),
-                    gap_px
-                )
+                self._fit_block(draw, card, (x0+pad,y0+pad,x1-pad,y1-pad), gap_px)
 
-        # selection (preview only)
-        if not export and self.sel_slot is not None:
-            if start_idx + self.sel_slot < len(self.cards):
-                sx0,sy0,sx1,sy1 = rects[self.sel_slot]
-                draw.rectangle([sx0+6,sy0+6,sx1-6,sy1-6], outline=(50,120,220), width=6)
+                # top-right attribute badge (with legibility halo)
+                badge = int(0.36*INCH); margin = int(0.12*INCH)
+                bx, by = x1 - margin - badge, y0 + margin
+                self._draw_legibility_radial(base, (bx+badge//2, by+badge//2), radius=badge//2)
+                icon = None
+                if card.cc_all:
+                    cc = Image.new("RGBA",(badge,badge),(0,0,0,0))
+                    d = ImageDraw.Draw(cc)
+                    d.ellipse([0,0,badge-1,badge-1], fill=(255,255,255,235), outline=(0,0,0,255), width=3)
+                    f = load_font(FONT_BEBAS, int(badge*0.48))
+                    tw = d.textbbox((0,0),"CC", font=f)[2]
+                    d.text(((badge - tw)//2, int(badge*0.26)), "CC", font=f, fill=(0,0,0,255))
+                    icon = cc
+                elif "Vegan" in card.attributes and os.path.isfile(ICON_VEGAN):
+                    icon = load_icon(ICON_VEGAN, badge)
+                elif "Halal" in card.attributes and os.path.isfile(ICON_HALAL):
+                    icon = load_icon(ICON_HALAL, badge)
+                if icon:
+                    base.alpha_composite(icon, (bx,by))
 
-        return img
+        # selection highlight
+        if not export and highlight is not None:
+            if start <= highlight < start+SLOTS_PER_PAGE:
+                slot = highlight - start
+                sx0,sy0,sx1,sy1 = rects[slot]
+                draw.rectangle([sx0+6,sy0+6,sx1-6,sy1-6], outline=(50,120,220,255), width=6)
 
-    def _render_preview(self):
-        total_pages = self.total_pages()
-        self.page = min(self.page, total_pages-1)
-        img = self._page_image(self.page, export=False)
-        small = img.resize((PREV_W, PREV_H), Image.LANCZOS)
-        self.preview_img = ImageTk.PhotoImage(small)
-        self.canvas.configure(width=PREV_W, height=PREV_H)
-        self.canvas.create_image(0,0,anchor="nw",image=self.preview_img)
+        return base.convert("RGB" if export else "RGBA")
 
-        self.page_lbl.config(text=f"Page {self.page+1} / {total_pages}")
+    def _render_all_previews(self):
+        self.canvas.delete("all")
+        self.page_img_tk.clear(); self.page_offsets.clear()
+        total_pages = max(1, math.ceil(len(self.cards)/SLOTS_PER_PAGE))
+        y = 20
+        gap = int(40 * PREVIEW_SCALE)
+        for p in range(total_pages):
+            page = self._page_image(p, export=False, highlight=self.sel_global_idx)
+            scaled = page.resize((int(PAGE_W*PREVIEW_SCALE), int(PAGE_H*PREVIEW_SCALE)), Image.LANCZOS)
+            tkimg = ImageTk.PhotoImage(scaled)
+            self.page_img_tk.append(tkimg)
+            self.page_offsets.append(y)
+            self.canvas.create_image(20, y, anchor="nw", image=tkimg)
+            y += scaled.height + gap
+
+        self.canvas.config(scrollregion=(0,0,int(PAGE_W*PREVIEW_SCALE)+40,y))
         self.count_lbl.config(text=f"{len(self.cards)} cards total")
 
-    def _click_preview(self, e):
-        x, y = int(e.x/PREVIEW_SCALE), int(e.y/PREVIEW_SCALE)
-        self.sel_slot = self._idx_at(x,y)
-        self._render_preview()
+        # top legibility band #e5e5e5 -> transparent
+        band_h = 60
+        grad = Image.new("RGBA", (int(PAGE_W*PREVIEW_SCALE)+60, band_h), (229,229,229,0))
+        px = grad.load()
+        for yy in range(band_h):
+            a = int(255*(1-yy/band_h))
+            for xx in range(grad.size[0]):
+                px[xx,yy] = (229,229,229,a)
+        tkgrad = ImageTk.PhotoImage(grad)
+        self.page_img_tk.append(tkgrad)
+        self.canvas.create_image(0, 0, anchor="nw", image=tkgrad)
+
+    # ------------- Preview events -------------
+    def _page_from_y(self, y_scaled):
+        for i, top in enumerate(self.page_offsets):
+            h = int(PAGE_H*PREVIEW_SCALE)
+            if top <= y_scaled < top+h: return i, top
+        if self.page_offsets:
+            d = [(abs(y_scaled-top), i) for i,top in enumerate(self.page_offsets)]
+            i = min(d)[1]; return i, self.page_offsets[i]
+        return 0,0
+
+    def _on_click_preview(self, e):
+        x_view = self.canvas.canvasx(e.x); y_view = self.canvas.canvasy(e.y)
+        page_idx, page_top = self._page_from_y(int(y_view))
+        x_full = int((x_view - 20) / PREVIEW_SCALE)   # account for left pad
+        y_full_on_page = int((y_view - page_top) / PREVIEW_SCALE)
+        rects = self._rects()
+        slot=None
+        for s,(x0,y0,x1,y1) in enumerate(rects):
+            if x0 <= x_full <= x1 and y0 <= y_full_on_page <= y1: slot=s; break
+        if slot is not None:
+            idx = page_idx*SLOTS_PER_PAGE + slot
+            if idx < len(self.cards):
+                self.sel_global_idx = idx; self._render_all_previews(); return
+        self.sel_global_idx=None; self._render_all_previews()
+
+    def _on_mousewheel(self, e):
+        UNITS_WIN=6; UNITS_MAC=25; UNITS_LIN=6
+        if hasattr(e,"num") and e.num in (4,5):
+            direction = -1 if e.num==4 else 1; self.canvas.yview_scroll(direction*UNITS_LIN,"units"); return
+        delta=int(getattr(e,"delta",0)); 
+        if delta==0: return
+        steps = (-int(delta/120)*UNITS_WIN) if os.name=="nt" else ((-1 if delta>0 else 1)*UNITS_MAC)
+        self.canvas.yview_scroll(steps, "units")
+
+    # ------------- Actions -------------
+    def _add_card(self):
+        title = self.item_var.get().strip()
+        if not title:
+            messagebox.showwarning("Missing", "Enter an item name."); return
+        allergens = [a for a,v in self.all_vars.items() if v.get()]
+        attrs = set()
+        if self.attr_vegan.get(): attrs.add("Vegan")
+        if self.attr_halal.get(): attrs.add("Halal")
+        artificial = [k for k,v in self.art_vars.items() if v.get()]
+        textures = [k for k,v in self.tex_vars.items() if v.get()]
+        card = MenuCard(title, allergens, cc_all=self.cc_var.get(),
+                        attributes=attrs, artificial_colors=artificial, textures=textures)
+        self.cards.append(card)
+
+        # reset inputs for fast entry
+        self.item_var.set("")
+        for d in (self.all_vars, self.art_vars, self.tex_vars): 
+            for v in d.values(): v.set(False)
+        self.attr_vegan.set(False); self.attr_halal.set(False)
+        # leave CC as-is intentionally
+
+        self.sel_global_idx=None
+        self._render_all_previews()
+
+    def _clear_all(self):
+        if not self.cards: return
+        if messagebox.askyesno("Clear all", "Remove all cards from all pages?"):
+            self.cards.clear(); self.sel_global_idx=None; self._render_all_previews()
 
     def _delete_selected(self, _e=None):
-        if self.sel_slot is None: return
-        global_idx = self.page*SLOTS_PER_PAGE + self.sel_slot
-        if 0 <= global_idx < len(self.cards):
-            del self.cards[global_idx]
-            # Adjust page if we deleted the last card on the last page
-            if self.page >= self.total_pages():
-                self.page = max(0, self.total_pages()-1)
-            self.sel_slot=None
-            self._render_preview()
+        if self.sel_global_idx is not None and 0 <= self.sel_global_idx < len(self.cards):
+            del self.cards[self.sel_global_idx]
+            self.sel_global_idx=None; self._render_all_previews()
 
-    # ----------------------- Export -----------------------
+    # ------------- Export -------------
+    def _page_image_export(self, idx):
+        return self._page_image(idx, export=True)
 
     def _export_pdf(self):
         if not self.cards:
             messagebox.showwarning("No cards","Add at least one card."); return
-        path = filedialog.asksaveasfilename(defaultextension=".pdf",
-                                            filetypes=[("PDF","*.pdf")],
-                                            initialfile="menu_cards.pdf",
-                                            title="Save PDF as…")
+        path = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF","*.pdf")],
+            initialfile="menu_cards.pdf",
+            title="Save PDF as…",
+        )
         if not path: return
         try:
-            pages = []
-            for p in range(self.total_pages()):
-                pages.append(self._page_image(p, export=True))
-            # Save multi-page PDF
+            pages=[]
+            total_pages = max(1, math.ceil(len(self.cards)/SLOTS_PER_PAGE))
+            for p in range(total_pages):
+                pages.append(self._page_image_export(p))
             first, rest = pages[0], pages[1:]
-            first.save(path, "PDF", resolution=float(DPI), save_all=True, append_images=rest)
+            first.save(path, "PDF", resolution=float(EXPORT_DPI), save_all=True, append_images=rest)
             messagebox.showinfo("Saved", f"Exported:\n{path}")
         except Exception as e:
             messagebox.showerror("Export failed", str(e))
-
-# ----------------------------- Run -------------------------------------------
 
 if __name__ == "__main__":
     App().mainloop()

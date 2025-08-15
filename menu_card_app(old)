@@ -1,0 +1,494 @@
+# menu_card_maker.py
+# UC Merced Dining Services — Menu Card PDF Maker (v4)
+# - CC checkbox: "CC: May Contain All Allergens" (no "Allergens:" prefix)
+# - No trailing period after allergens list
+# - Grouped centering of title+allergens with adjustable gap (pt)
+# - Multi-page output; preview shows ALL pages in a scrollable canvas
+# - Click any card to select; Backspace/Delete to remove
+# - Cards touch each other; first card offset 0.68" x, 0.44" y
+# - Long text wraps & auto-shrinks to fit
+
+import os
+import math
+import sys
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+from PIL import Image, ImageDraw, ImageFont, ImageTk
+
+# ----------------------------- Page & Card Geometry --------------------------
+
+DPI = 300                    # render @300 DPI
+INCH = DPI
+
+PAGE_W, PAGE_H = int(8.5*INCH), int(11*INCH)
+
+CARD_W_IN, CARD_H_IN = 3.57, 2.00
+CARD_W, CARD_H = int(CARD_W_IN*INCH), int(CARD_H_IN*INCH)
+
+START_X, START_Y = int(0.68*INCH), int(0.44*INCH)
+
+COLS, ROWS = 2, 5
+SLOTS_PER_PAGE = COLS * ROWS
+GAP_X = GAP_Y = 0           # cards touch each other
+
+PREVIEW_SCALE = 0.35
+
+# Colors
+PAGE_PREVIEW_BG = (235, 235, 235)      # gray preview page
+PAGE_EXPORT_BG  = (255, 255, 255)      # white for PDF
+CARD_BG         = (255, 255, 255)
+BLACK           = (0, 0, 0)
+RED             = (200, 0, 0)
+
+# Top 9 allergens (FDA)
+TOP9 = ["Milk","Eggs","Fish","Crustacean Shellfish","Tree Nuts","Peanuts","Wheat","Soy","Sesame"]
+
+# ----------------------------- Data ------------------------------------------
+
+class MenuCard:
+    def __init__(self, title, allergens, cc_all=False):
+        self.title = title.strip()
+        self.allergens = [a for a in TOP9 if a in allergens]
+        self.cc_all = bool(cc_all)
+
+    @property
+    def allergens_line(self):
+        if self.cc_all:
+            return "CC: May Contain All Allergens"
+        if not self.allergens:
+            return "Allergens: None"
+        # No trailing period
+        return "Allergens: " + ", ".join(self.allergens)
+
+# ----------------------------- App -------------------------------------------
+
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("UC Merced Dining — Menu Card PDF Maker")
+        self.geometry("1200x820")
+
+        self.cards = []                  # all cards across pages
+        self.sel_global_idx = None       # selected card global index (across all pages)
+
+        # Font controls
+        self.item_pt = tk.IntVar(value=100)
+        self.all_pt  = tk.IntVar(value=50)
+        self.gap_pt  = tk.IntVar(value=18)        # distance between title & allergens (pt)
+        self.path_calibri = tk.StringVar(value="")
+        self.path_bebas   = tk.StringVar(value="")
+
+        # Add-card controls
+        self.item_var = tk.StringVar()
+        self.all_vars = {a: tk.BooleanVar(value=False) for a in TOP9}
+        self.cc_var   = tk.BooleanVar(value=False)  # CC checkbox
+
+        # Preview state
+        self.page_img_tk = []            # list of Tk images (for GC)
+        self.page_offsets = []           # y offsets (scaled) for each page top in the scroll canvas
+
+        self._build_ui()
+        self._render_all_previews()
+
+        # Deletion via keyboard
+        self.bind("<BackSpace>", self._delete_selected)
+        self.bind("<Delete>", self._delete_selected)
+
+# ----------------------- UI -----------------------
+
+    def _build_ui(self):
+        root = ttk.Frame(self, padding=10); root.pack(fill="both", expand=True)
+
+        # LEFT PANE
+        left = ttk.Frame(root); left.pack(side="left", fill="y", padx=(0,10))
+
+        ttk.Label(left, text="Add Menu Card", font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(0,6))
+
+        self.item_var = getattr(self, "item_var", tk.StringVar())  # ensure exists if pasted standalone
+        row = ttk.Frame(left); row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Item name:").pack(side="left")
+        ttk.Entry(row, textvariable=self.item_var, width=28).pack(side="left", padx=6)
+
+        ttk.Label(left, text="Allergens:").pack(anchor="w")
+        grid = ttk.Frame(left); grid.pack(anchor="w", pady=2)
+        for i, a in enumerate(TOP9):
+            ttk.Checkbutton(grid, text=a, variable=self.all_vars[a]).grid(row=i//2, column=i%2, sticky="w", padx=(0,12))
+
+        ttk.Checkbutton(left,
+                        text='CC: May Contain All Allergens',
+                        variable=self.cc_var,
+                        command=self._render_all_previews).pack(anchor="w", pady=(4,2))
+
+        fr = ttk.Frame(left); fr.pack(anchor="w", pady=6)
+        ttk.Label(fr, text="Item font (pt):").grid(row=0, column=0, sticky="w")
+        ttk.Spinbox(fr, from_=24, to=200, width=5,
+                    textvariable=self.item_pt, command=self._render_all_previews).grid(row=0, column=1, padx=6)
+        ttk.Label(fr, text="Allergen font (pt):").grid(row=1, column=0, sticky="w", pady=2)
+        ttk.Spinbox(fr, from_=10, to=120, width=5,
+                    textvariable=self.all_pt, command=self._render_all_previews).grid(row=1, column=1, padx=6)
+        ttk.Label(fr, text="Gap between lines (pt):").grid(row=2, column=0, sticky="w", pady=2)
+        ttk.Spinbox(fr, from_=0, to=80, width=5,
+                    textvariable=self.gap_pt, command=self._render_all_previews).grid(row=2, column=1, padx=6)
+
+        f1 = ttk.Frame(left); f1.pack(fill="x", pady=(8,2))
+        ttk.Label(f1, text="Calibri TTF (optional):").pack(side="left")
+        ttk.Entry(f1, textvariable=self.path_calibri, width=24).pack(side="left", padx=6)
+        ttk.Button(f1, text="Browse", command=lambda: self._browse(self.path_calibri)).pack(side="left")
+
+        f2 = ttk.Frame(left); f2.pack(fill="x", pady=2)
+        ttk.Label(f2, text="Bebas Neue (TTF/OTF):").pack(side="left")
+        ttk.Entry(f2, textvariable=self.path_bebas, width=24).pack(side="left", padx=6)
+        ttk.Button(f2, text="Browse", command=lambda: self._browse(self.path_bebas)).pack(side="left")
+
+        b = ttk.Frame(left); b.pack(anchor="w", pady=8)
+        ttk.Button(b, text="Add Card", command=self._add_card).pack(side="left")
+        ttk.Button(b, text="Clear All", command=self._clear_all).pack(side="left", padx=6)
+        ttk.Button(b, text="Export PDF…", command=self._export_pdf).pack(side="left", padx=6)
+
+        self.count_lbl = ttk.Label(left, text="0 cards total")
+        self.count_lbl.pack(anchor="w", pady=(8,0))
+
+        # RIGHT PANE — Scrollable preview (all pages stacked)
+        right = ttk.Frame(root); right.pack(side="left", fill="both", expand=True)
+
+        ttk.Label(right, text="Preview (scroll; click a card to select; Backspace/Delete to remove)").pack(anchor="w")
+
+        # Scrollable canvas (paper area)
+        self.scroll_canvas = tk.Canvas(right, highlightthickness=0, bg="#bfbfbf")
+        self.scroll_canvas.pack(side="left", fill="both", expand=True)
+
+        vbar = ttk.Scrollbar(right, orient="vertical", command=self.scroll_canvas.yview)
+        vbar.pack(side="left", fill="y")
+        self.scroll_canvas.configure(yscrollcommand=vbar.set, yscrollincrement=1)
+
+        # Give the canvas focus when the pointer enters it so it receives wheel events
+        self.scroll_canvas.bind("<Enter>", lambda e: self.scroll_canvas.focus_set())
+
+        # Wheel/trackpad bindings directly on the canvas (no bind_all, no rebind loops)
+        self.scroll_canvas.bind("<MouseWheel>", self._on_mousewheel)   # Windows/macOS
+        self.scroll_canvas.bind("<Button-4>", self._on_mousewheel)     # Linux up
+        self.scroll_canvas.bind("<Button-5>", self._on_mousewheel)     # Linux down
+
+        # Click to select a card on any page
+        self.scroll_canvas.bind("<Button-1>", self._on_preview_click)
+
+    def _on_mousewheel(self, e):
+        """
+        Smooth-ish scroll when the pointer is over the paper (canvas).
+        Works on Windows/macOS (<MouseWheel>) and Linux (<Button-4/5>).
+        """
+        UNITS_WIN = 6   # per 120-delta notch on Windows
+        UNITS_MAC = 25   # macOS trackpads fire many small deltas
+        UNITS_LIN = 6   # per button-4/5 click
+
+        # Linux legacy events
+        if hasattr(e, "num") and e.num in (4, 5):
+            direction = -1 if e.num == 4 else 1
+            self.scroll_canvas.yview_scroll(direction * UNITS_LIN, "units")
+            return
+
+        # Windows/macOS delta events
+        delta = int(e.delta)
+        if delta == 0:
+            return
+
+        if os.name == "nt":
+            steps = -int(delta / 120) * UNITS_WIN   # invert so wheel-up scrolls up
+        else:
+            # macOS: many tiny deltas; translate to +/-1 unit step
+            steps = -1 if delta > 0 else 1
+            steps *= UNITS_MAC
+
+        self.scroll_canvas.yview_scroll(steps, "units")
+
+    # ----------------------- Card ops -----------------------
+
+    def _browse(self, var):
+        p = filedialog.askopenfilename(title="Choose font (TTF/OTF)",
+                                       filetypes=[("Font files","*.ttf *.otf"),("All files","*.*")])
+        if p: var.set(p); self._render_all_previews()
+
+    def _add_card(self):
+        t = self.item_var.get().strip()
+        if not t:
+            messagebox.showwarning("Missing", "Enter an item name.")
+            return
+        selected = [a for a,v in self.all_vars.items() if v.get()]
+        cc_flag = self.cc_var.get()
+        self.cards.append(MenuCard(t, selected, cc_all=cc_flag))
+
+        # reset inputs
+        self.item_var.set("")
+        for v in self.all_vars.values(): v.set(False)
+        # leave CC checkbox as-is (if you want to keep adding CC cards)
+
+        self.sel_global_idx = None
+        self._render_all_previews()
+
+    def _clear_all(self):
+        if not self.cards: return
+        if messagebox.askyesno("Clear all", "Remove all cards from all pages?"):
+            self.cards.clear()
+            self.sel_global_idx = None
+            self._render_all_previews()
+
+    # ----------------------- Geometry helpers -----------------------
+
+    def _rects(self):
+        rects=[]
+        for r in range(ROWS):
+            for c in range(COLS):
+                x0 = START_X + c*(CARD_W + GAP_X)
+                y0 = START_Y + r*(CARD_H + GAP_Y)
+                rects.append((x0,y0,x0+CARD_W,y0+CARD_H))
+        return rects
+
+    # ----------------------- Fonts -----------------------
+
+    def _truetype(self, pref, pt, extra=[]):
+        if pref and os.path.isfile(pref):
+            try: return ImageFont.truetype(pref, int(round(pt)))
+            except: pass
+        for f in extra:
+            try: return ImageFont.truetype(f, int(round(pt)))
+            except: continue
+        system = [
+            r"C:\Windows\Fonts\calibri.ttf", r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\arialbd.ttf",
+            "/System/Library/Fonts/Supplemental/Calibri.ttf", "/System/Library/Fonts/Supplemental/Arial.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        ]
+        for f in system:
+            try: return ImageFont.truetype(f, int(round(pt)))
+            except: continue
+        return ImageFont.load_default()
+
+    # ----------------------- Text fitting -----------------------
+
+    def _wrap_and_measure(self, draw, text, font, max_w):
+        words = text.split()
+        lines=[]
+        cur=""
+        for w in words:
+            trial = (cur+" "+w).strip()
+            wbox = draw.textbbox((0,0), trial, font=font)
+            if wbox[2]-wbox[0] <= max_w or not cur:
+                cur = trial
+            else:
+                lines.append(cur); cur=w
+        if cur: lines.append(cur)
+        metrics = draw.textbbox((0,0), "Ag", font=font)
+        lh = metrics[3]-metrics[1]
+        block_w = 0
+        for ln in lines:
+            w = draw.textbbox((0,0), ln, font=font)[2]
+            block_w = max(block_w, w)
+        block_h = lh*len(lines)
+        return lines, lh, block_w, block_h
+
+    def _fit_block(self, draw, title, allergens, target_box, title_pt, all_pt, gap_px,
+                   min_title_pt=18, min_all_pt=12):
+        x0,y0,x1,y1 = target_box
+        avail_w = x1-x0
+        avail_h = y1-y0
+
+        calibri_list = [
+            self.path_calibri.get(),
+            "calibri.ttf", "Calibri.ttf",
+            r"C:\Windows\Fonts\calibri.ttf",
+            "/System/Library/Fonts/Supplemental/Calibri.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+        bebas_list = [
+            self.path_bebas.get(),
+            "BebasNeue-Regular.ttf","BebasNeue.ttf","BebasNeue-Regular.otf","BebasNeue.otf",
+            r"C:\Windows\Fonts\arialbd.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        ]
+
+        t_pt = int(round(title_pt))
+        a_pt = int(round(all_pt))
+
+        def measure(tpt, apt):
+            t_font = self._truetype(calibri_list[0], tpt, calibri_list[1:])
+            a_font = self._truetype(bebas_list[0],   apt, bebas_list[1:])
+            t_lines, t_lh, t_bw, t_bh = self._wrap_and_measure(draw, title,    t_font, avail_w)
+            a_lines, a_lh, a_bw, a_bh = self._wrap_and_measure(draw, allergens, a_font, avail_w)
+            total_h = t_bh + gap_px + a_bh
+            max_w = max(t_bw, a_bw)
+            return (t_font, a_font, t_lines, a_lines, t_lh, a_lh, total_h, max_w)
+
+        while t_pt >= min_title_pt and a_pt >= min_all_pt:
+            t_font, a_font, t_lines, a_lines, t_lh, a_lh, total_h, max_w = measure(t_pt, a_pt)
+            if total_h <= avail_h and max_w <= avail_w:
+                cx = x0 + avail_w//2
+                top = y0 + (avail_h - total_h)//2
+                y = top
+                for ln in t_lines:
+                    w = draw.textbbox((0,0), ln, font=t_font)[2]
+                    draw.text((cx - w//2, y), ln, font=t_font, fill=BLACK)
+                    y += t_lh
+                y += gap_px
+                for ln in a_lines:
+                    w = draw.textbbox((0,0), ln, font=a_font)[2]
+                    draw.text((cx - w//2, y), ln, font=a_font, fill=RED)
+                    y += a_lh
+                return
+            # shrink whichever is larger contributor
+            if total_h > avail_h or max_w > avail_w:
+                if t_pt >= a_pt:
+                    t_pt -= 2
+                else:
+                    a_pt -= 2
+            else:
+                break
+
+        # Fallback single lines at min sizes
+        t_font = self._truetype(calibri_list[0], max(min_title_pt, 12), calibri_list[1:])
+        a_font = self._truetype(bebas_list[0],   max(min_all_pt, 10),   bebas_list[1:])
+        cx = x0 + avail_w//2; cy = y0 + avail_h//2
+        draw.text((cx, cy), title[:40]+"…", font=t_font, fill=BLACK, anchor="mm")
+        draw.text((cx, cy+int(12/72*DPI)), allergens[:40]+"…", font=a_font, fill=RED, anchor="mm")
+
+    # ----------------------- Page rendering -----------------------
+
+    def _page_image(self, page_index, export=False, highlight_global_idx=None):
+        bg = PAGE_EXPORT_BG if export else PAGE_PREVIEW_BG
+        img = Image.new("RGB", (PAGE_W, PAGE_H), bg)
+        draw = ImageDraw.Draw(img)
+
+        pad = int(0.18*INCH)        # inner padding
+        gap_px = int(self.gap_pt.get()/72.0 * DPI)
+
+        rects = self._rects()
+        start_idx = page_index * SLOTS_PER_PAGE
+
+        for slot,(x0,y0,x1,y1) in enumerate(rects):
+            draw.rectangle([x0,y0,x1,y1], fill=CARD_BG)
+            idx = start_idx + slot
+            if idx < len(self.cards):
+                card = self.cards[idx]
+                self._fit_block(
+                    draw,
+                    card.title,
+                    card.allergens_line,
+                    (x0+pad, y0+pad, x1-pad, y1-pad),
+                    self.item_pt.get(),
+                    self.all_pt.get(),
+                    gap_px
+                )
+
+        # selection (preview only)
+        if not export and highlight_global_idx is not None:
+            if start_idx <= highlight_global_idx < start_idx + SLOTS_PER_PAGE:
+                slot = highlight_global_idx - start_idx
+                sx0,sy0,sx1,sy1 = rects[slot]
+                draw.rectangle([sx0+6,sy0+6,sx1-6,sy1-6], outline=(50,120,220), width=6)
+
+        return img
+
+    def _render_all_previews(self):
+        # Clear old canvas contents
+        self.scroll_canvas.delete("all")
+        self.page_img_tk.clear()
+        self.page_offsets.clear()
+
+        total_pages = max(1, math.ceil(len(self.cards)/SLOTS_PER_PAGE))
+        y_cursor = 0
+        gap_between_pages = int(40 * PREVIEW_SCALE)  # visual spacing between page previews (in screen px)
+
+        for p in range(total_pages):
+            page_img = self._page_image(p, export=False, highlight_global_idx=self.sel_global_idx)
+            scaled = page_img.resize((int(PAGE_W*PREVIEW_SCALE), int(PAGE_H*PREVIEW_SCALE)), Image.LANCZOS)
+            tkimg = ImageTk.PhotoImage(scaled)
+            self.page_img_tk.append(tkimg)
+            self.page_offsets.append(y_cursor)
+            self.scroll_canvas.create_image(0, y_cursor, anchor="nw", image=tkimg)
+            y_cursor += scaled.height + gap_between_pages
+
+        # configure scroll region
+        width = int(PAGE_W*PREVIEW_SCALE)
+        self.scroll_canvas.config(scrollregion=(0,0,width,y_cursor))
+        self.scroll_canvas.config(width=min(width+20, self.winfo_width()-320), height=self.winfo_height()-120)
+
+        self.count_lbl.config(text=f"{len(self.cards)} cards total")
+
+    def _page_from_y(self, y_scaled):
+        """Which page index is at this y (scaled coordinates)?"""
+        for i, top in enumerate(self.page_offsets):
+            # page height in scaled px
+            h = int(PAGE_H*PREVIEW_SCALE)
+            if top <= y_scaled < top + h:
+                return i, top
+        # If clicked gaps between pages, snap to nearest page
+        if self.page_offsets:
+            # nearest page by distance
+            dists = [(abs(y_scaled - top), i) for i, top in enumerate(self.page_offsets)]
+            i = min(dists)[1]
+            return i, self.page_offsets[i]
+        return 0, 0
+
+    def _on_preview_click(self, event):
+        # Scrolled coordinate
+        x_view = self.scroll_canvas.canvasx(event.x)
+        y_view = self.scroll_canvas.canvasy(event.y)
+
+        # Which page / offset?
+        page_idx, page_top = self._page_from_y(int(y_view))
+
+        # Map to full-res page coords
+        x_full = int(x_view / PREVIEW_SCALE)
+        y_full_on_page = int((y_view - page_top) / PREVIEW_SCALE)
+
+        # Identify slot on that page
+        rects = self._rects()
+        slot = None
+        for s,(x0,y0,x1,y1) in enumerate(rects):
+            if x0 <= x_full <= x1 and y0 <= y_full_on_page <= y1:
+                slot = s
+                break
+        if slot is not None:
+            global_idx = page_idx * SLOTS_PER_PAGE + slot
+            if global_idx < len(self.cards):
+                self.sel_global_idx = global_idx
+                self._render_all_previews()
+                return
+        # Clicked empty area
+        self.sel_global_idx = None
+        self._render_all_previews()
+
+    def _delete_selected(self, _e=None):
+        if self.sel_global_idx is not None and 0 <= self.sel_global_idx < len(self.cards):
+            del self.cards[self.sel_global_idx]
+            self.sel_global_idx = None
+            self._render_all_previews()
+
+    # ----------------------- Export -----------------------
+
+    def _export_pdf(self):
+        if not self.cards:
+            messagebox.showwarning("No cards","Add at least one card."); return
+        path = filedialog.asksaveasfilename(defaultextension=".pdf",
+                                            filetypes=[("PDF","*.pdf")],
+                                            initialfile="menu_cards.pdf",
+                                            title="Save PDF as…")
+        if not path: return
+        try:
+            pages = []
+            total_pages = max(1, math.ceil(len(self.cards)/SLOTS_PER_PAGE))
+            for p in range(total_pages):
+                pages.append(self._page_image(p, export=True))
+            first, rest = pages[0], pages[1:]
+            first.save(path, "PDF", resolution=float(DPI), save_all=True, append_images=rest)
+            messagebox.showinfo("Saved", f"Exported:\n{path}")
+        except Exception as e:
+            messagebox.showerror("Export failed", str(e))
+
+# ----------------------------- Run -------------------------------------------
+
+if __name__ == "__main__":
+    App().mainloop()
