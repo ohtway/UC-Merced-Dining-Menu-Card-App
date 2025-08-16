@@ -1,0 +1,250 @@
+# menu_card_mockup_responsive.py
+# Responsive layout with true circles for allergens/attributes
+# and pill-shaped chips regardless of non-uniform scaling.
+
+import os, math, tkinter as tk
+from tkinter import ttk
+from PIL import Image, ImageTk, ImageDraw, ImageFont
+
+# ---------- Paths ----------
+BASE_DIR  = r"C:\USERS\OGHTW\DOCUMENTS\DESIGN\CHAPTER 2 CODING\UC-MERCED-DINING-MENU-CARD-APP"
+FONTS_DIR = os.path.join(BASE_DIR, "fonts")
+ICONS_DIR = os.path.join(BASE_DIR, "icons")
+
+FONT_KIEVIT = os.path.join(FONTS_DIR, "Kievit Medium.ttf")
+FONT_MINION = os.path.join(FONTS_DIR, "Minion Pro Italic.ttf")
+
+# ---------- Base design space ----------
+BASE_W, BASE_H = 1920, 1080
+
+# Pinned icon X-centers (in base coordinates)
+ARTIFICIAL_ICON_X_BASE = 530
+TEXTURE_ICON_X_BASE    = 745
+
+# ---------- Icon filenames (exact) ----------
+ICON = {
+    "egg":"allergen_egg_icon.png","milk":"allergen_milk_icon.png","wheat":"allergen_wheat_icon.png",
+    "fish":"allergen_fish_icon.png","shellfish":"allergen_shellfish_icon.png","soy":"allergen_soy_icon.png",
+    "sesame":"allergen_sesame_icon.png","peanuts":"allergen_peanuts_icon.png","tree_nuts":"allergen_tree-nuts_icon.png",
+    "cc_all":"allergen_cc_may_contain_icon.png","add_allergen":"allergen_add_allergen_icon.png",
+    "halal":"attributes_halal_icon.png","vegan":"attributes_vegan_icon.png","caffeine":"attributes_contains_caffeine_icon.png",
+    "red40":"artificial_colors_red_40_icon.png","yellow5":"artificial_colors_yellow_5_icon.png",
+    "blue1":"artificial_colors_blue_1_icon.png","blue2":"artificial_colors_blue_2_icon.png",
+    "green3":"artificial_colors_green_3_icon.png","texture":"texture_and_stabilizer_icon.png",
+    "logo":"dining_logo.png",
+}
+
+_img_refs = []
+def _keep(x): _img_refs.append(x); return x
+
+# ---------- Drawing helpers ----------
+def rounded_rect(w, h, r, fill=None, outline=None, width=1):
+    img = Image.new("RGBA", (max(1,int(round(w))), max(1,int(round(h)))), (0,0,0,0))
+    ImageDraw.Draw(img).rounded_rectangle([0,0,img.width-1,img.height-1], r,
+                                          fill=fill, outline=outline, width=max(1,int(round(width))))
+    return img
+
+def add_img(canvas, pil_img, x, y, w=None, h=None):
+    if w is not None and h is not None:
+        pil_img = pil_img.resize((max(1,int(round(w))), max(1,int(round(h)))), Image.LANCZOS)
+    tk_img = _keep(ImageTk.PhotoImage(pil_img))
+    canvas.create_image(x, y, anchor="nw", image=tk_img)
+
+def draw_text(canvas, text, x, y, w, h, font_path, px, color="black", anchor="nw"):
+    img = Image.new("RGBA", (max(1,int(round(w))), max(1,int(round(h)))), (0,0,0,0))
+    d = ImageDraw.Draw(img)
+    try: fnt = ImageFont.truetype(font_path, max(1,int(round(px))))
+    except: fnt = ImageFont.load_default()
+    bbox = d.textbbox((0,0), text, font=fnt)
+    tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
+    if anchor in ("center","c"):
+        pos = ((img.width - tw) / 2, (img.height - th) / 2)
+    else:
+        pos = (0,0)
+    d.text(pos, text, font=fnt, fill=color)
+    add_img(canvas, img, x, y)
+
+def stacked_outline(canvas, x, y, w, h, colors, fill=None, radius=10, width_each=2):
+    pad = len(colors)*width_each + 2
+    img = Image.new("RGBA", (int(round(w+2*pad)), int(round(h+2*pad))), (0,0,0,0))
+    d = ImageDraw.Draw(img)
+    for i, col in enumerate(colors):
+        inset = i*width_each
+        d.rounded_rectangle([pad+inset, pad+inset, pad+w-inset-1, pad+h-inset-1],
+                            radius=max(2, radius - i),
+                            outline=col, width=width_each,
+                            fill=fill if i == len(colors)-1 else None)
+    add_img(canvas, img, x-pad, y-pad)
+
+def draw_centered_icon_on(layer_img, icon_key, scale_target):
+    """Draw icon centered on a given PIL image layer."""
+    fn = ICON.get(icon_key)
+    if not fn: return layer_img
+    p = os.path.join(ICONS_DIR, fn)
+    if not os.path.exists(p): return layer_img
+    ic = Image.open(p).convert("RGBA")
+    tgt = int(scale_target)
+    ic = ic.resize((max(1,tgt), max(1,tgt)), Image.LANCZOS)
+    lx = (layer_img.width - tgt) // 2
+    ly = (layer_img.height - tgt) // 2
+    layer_img.alpha_composite(ic, (lx, ly))
+    return layer_img
+
+def circle_button(canvas, x, y, d_base, fill_hex, outline_hex, icon_key, sx, sy):
+    """
+    Perfect circle regardless of non-uniform scaling:
+    - Nominal rect: (S(x), T(y)) with size S(d_base) by T(d_base)
+    - Actual circle diameter = min(S(d_base), T(d_base))
+    - Circle is centered within the nominal rect.
+    """
+    nominal_w = sx * d_base
+    nominal_h = sy * d_base
+    size = min(nominal_w, nominal_h)                 # enforce circle
+    left = sx * x + (nominal_w - size) / 2
+    top  = sy * y + (nominal_h - size) / 2
+
+    border_w = max(1, int(round(size * 0.02)))       # proportional outline
+    base = rounded_rect(size, size, size/2, fill=fill_hex, outline=outline_hex, width=border_w)
+    base = draw_centered_icon_on(base, icon_key, size * 0.62)
+    add_img(canvas, base, left, top)
+
+def pill_button_bg(canvas, x, y, w_base, h_base, fillc, outc, sx, sy):
+    """
+    Proper pill (semicircular ends) under non-uniform scaling:
+    - Width = S(w_base), Height = T(h_base)
+    - Corner radius = height/2 to keep semicircles.
+    """
+    W = sx * w_base
+    H = sy * h_base
+    r = H / 2.0
+    add_img(canvas, rounded_rect(W, H, r, fill=fillc, outline=outc, width=max(1,int(round(2*sy)))), sx*x, sy*y)
+
+def place_icon_on_button(canvas, x_canvas, y_canvas, w_canvas, h_canvas, icon_key, desired_center_x_canvas):
+    """Place icon centered at a fixed canvas X within a button rect (canvas units)."""
+    fn = ICON.get(icon_key)
+    if not fn: return
+    p = os.path.join(ICONS_DIR, fn)
+    if not os.path.exists(p): return
+    ic = Image.open(p).convert("RGBA")
+    tgt = int(min(w_canvas, h_canvas) * 0.62)
+    ic = ic.resize((max(1,tgt), max(1,tgt)), Image.LANCZOS)
+
+    layer = Image.new("RGBA", (max(1,int(round(w_canvas))), max(1,int(round(h_canvas)))), (0,0,0,0))
+    lx = int(round(desired_center_x_canvas - x_canvas - tgt / 2))
+    ly = int(round(layer.height / 2 - tgt / 2))
+    layer.alpha_composite(ic, (lx, ly))
+    add_img(canvas, layer, x_canvas, y_canvas)
+
+# ---------- App ----------
+class App:
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("Menu Card Maker — Static Mockup (Responsive)")
+        self.root.geometry(f"{BASE_W}x{BASE_H}+50+50")
+        self.root.minsize(1280, 720)
+        self.root.resizable(True, True)
+
+        self.canvas = tk.Canvas(self.root, bg="#FFFFFF", highlightthickness=0)
+        self.canvas.pack(fill="both", expand=True)
+
+        self.item_entry = ttk.Entry(self.root)
+        self.root.bind("<Configure>", self.on_resize)
+
+    def S(self, x): return x * self.sx
+    def T(self, y): return y * self.sy
+
+    def on_resize(self, _event):
+        w = max(1, self.root.winfo_width())
+        h = max(1, self.root.winfo_height())
+        self.sx = w / BASE_W
+        self.sy = h / BASE_H
+
+        self.canvas.config(width=w, height=h)
+        self.canvas.delete("all")
+        S, T = self.S, self.T
+
+        # Right grey panel
+        self.canvas.create_rectangle(S(1077.8), T(0), S(1920), T(1080), fill="#e5e5e5", outline="")
+
+        # Title & version
+        draw_text(self.canvas, "Menu Card Maker", S(47.3), T(38.6), S(370.3), T(58.3), FONT_KIEVIT, 42*self.sy, "black")
+        draw_text(self.canvas, "Version 1.0",     S(47.3), T(96.9), S(113),   T(26.2), FONT_MINION, 20*self.sy, "#222")
+
+        # Item name
+        draw_text(self.canvas, "Item Name", S(54.7), T(198.2), S(96.8), T(23.3), FONT_KIEVIT, 18*self.sy, "black")
+        stacked_outline(self.canvas, S(165), T(193.8), S(766.4), T(31.8),
+                        ["#9b9b9b", "#a8a8a8", "#e1dede", "#9f9f9f"],
+                        fill="#FFFFFF", radius=int(6*self.sy), width_each=max(1,int(2*self.sy)))
+        self.item_entry.place(x=S(171), y=T(197.8), width=S(754.4), height=T(23.8))
+
+        # Allergens (perfect circles)
+        draw_text(self.canvas, "Allergens", S(54.7), T(295.4), S(93.1), T(26), FONT_KIEVIT, 18*self.sy, "black")
+        for key, x, y, f, o in [
+            ("egg",79.3,352.1,"#ffe89a","#fff6d8"),
+            ("milk",199.7,352.1,"#ff9a9a","#ffdbdb"),
+            ("wheat",320.0,352.1,"#efb58f","#ffd6d6"),
+            ("fish",79.3,472.6,"#9acbff","#dbedff"),
+            ("shellfish",199.7,472.6,"#e1a0e1","#ffd4ff"),
+            ("soy",320.0,472.6,"#c3ddb7","#e9f6e3"),
+            ("sesame",79.3,593.0,"#9b9b9b","#cfcaca"),
+            ("peanuts",199.7,593.0,"#ffc952","#ffe7b2"),
+            ("tree_nuts",320.0,593.0,"#91c4b9","#dbdbdb"),
+            ("cc_all",79.3,713.2,"#bb8585","#d8b4b4"),
+            ("add_allergen",199.7,713.2,"#ebebeb","#ebdfdf"),
+        ]:
+            circle_button(self.canvas, x, y, 100.5, f, o, key, self.sx, self.sy)
+
+        # Attributes (perfect circles)
+        draw_text(self.canvas, "Attributes:", S(505), T(295.4), S(150), T(26), FONT_KIEVIT, 18*self.sy, "black")
+        for key, x, y in [("halal",531.7,352.1),("vegan",651.9,352.1),("caffeine",772.2,352.1)]:
+            circle_button(self.canvas, x, y, 100.5, "#efeeee", "#fff8f8", key, self.sx, self.sy)
+
+        # Section headers
+        draw_text(self.canvas, "Artificial Colors:",     S(502), T(472.6), S(220), T(26), FONT_KIEVIT, 18*self.sy, "black")
+        draw_text(self.canvas, "Texture & Stabilizers:", S(716), T(472.6), S(260), T(26), FONT_KIEVIT, 18*self.sy, "black")
+
+        # Pills (background first, then icons pinned to absolute X, then text)
+        # Artificial Colors
+        for (y,label,key,col,outl,txt) in [
+            (528.8,"  Red 40","red40","#ff8181","#ff9a9a","#800000"),
+            (587.8,"  Yellow 5","yellow5","#fffa81","#f4e4a2","#807700"),
+            (646.3,"  Blue 1","blue1","#81f4ff","#c8fcff","#3d96a2"),
+            (704.8,"  Blue 2","blue2","#81bfff","#c2d5ff","#3d6ba2"),
+            (763.3,"  Green 3","green3","#abebbe","#e3ffd7","#275213"),
+        ]:
+            pill_button_bg(self.canvas, 502, y, 170.4, 49.7, col, outl, self.sx, self.sy)
+            place_icon_on_button(self.canvas, S(502), T(y), S(170.4), T(49.7),
+                                 key, desired_center_x_canvas=S(ARTIFICIAL_ICON_X_BASE))
+            draw_text(self.canvas, label, S(502), T(y), S(170.4), T(49.7), FONT_KIEVIT, 18*self.sy, txt, "center")
+
+        # Texture & Stabilizers
+        for i, label in enumerate(["  Carrageenan","  Xanthan gum","  Cellulose gum","  Polysorbates"]):
+            y = 528.8 + i*58.5
+            pill_button_bg(self.canvas, 716, y, 216.3, 49.7, "#efeeee", "#fff8f8", self.sx, self.sy)
+            place_icon_on_button(self.canvas, S(716), T(y), S(216.3), T(49.7),
+                                 "texture", desired_center_x_canvas=S(TEXTURE_ICON_X_BASE))
+            draw_text(self.canvas, label, S(716), T(y), S(216.3), T(49.7), FONT_KIEVIT, 18*self.sy, "#443b3b", "center")
+
+        # Logo
+        lp = os.path.join(ICONS_DIR, ICON["logo"])
+        if os.path.exists(lp):
+            add_img(self.canvas, Image.open(lp).convert("RGBA"), S(37.7), T(921.7), S(156.6), T(156.6))
+
+        # Bottom buttons
+        for x, text, wbtn in [(296.3,"Add Menu Card",476.9),(784.8,"Export PDF",238)]:
+            add_img(self.canvas, rounded_rect(S(wbtn), T(36.8), T(36.8)/2, fill="#012e64", outline="#3d6ba2",
+                                              width=max(1,int(round(2*self.sy)))),
+                    S(x), T(981.6))
+            draw_text(self.canvas, text, S(x), T(981.6), S(wbtn), T(36.8), FONT_KIEVIT, 18*self.sy, "white", "center")
+
+        # Right preview border & example card
+        stacked_outline(self.canvas, S(1180.5), T(110), S(636.9), T(872.5),
+                        ["#000000","#182b49","#000000"], fill=None, radius=int(16*self.sy), width_each=max(1,int(3*self.sy)))
+        add_img(self.canvas, Image.new("RGBA", (264,146), "#FFFFFF"), S(1229.9), T(159.9), S(264.2), T(146.3))
+
+    def run(self):
+        self.item_entry.focus_set()
+        self.root.mainloop()
+
+if __name__ == "__main__":
+    App().run()
