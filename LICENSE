@@ -186,7 +186,7 @@
       same "printed page" as the copyright notice for easier
       identification within third-party archives.
 
-   Copyright [yyyy] [name of copyright owner]
+   Copyright 2025 Oliver Htway
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -199,3 +199,10 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+
+
+Third-Party Asset Notice:
+
+This project includes visual assets (icons) sourced from Canva, including Canva Premium content. These assets are used solely within this project and are not licensed for redistribution, reuse, or modification outside the scope of this application. Users and contributors must not extract, distribute, or repurpose these Canva assets independently. All rights to these assets remain with Canva and their respective licensors.
+
