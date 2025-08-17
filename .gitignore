@@ -3,20 +3,20 @@
 Thumbs.db
 
 # Java/Maven
-/serve*/target/
-/**/target/
+server/target/
+**/target/
 *.iml
 .idea/
 
 # Local builds/installers
-/dist/
-/build/
-/out/
+dist/
+build/
+out/
 
 # Logs & temp
 *.log
-/tmp/
-/temp/
+tmp/
+temp/
 
 # Node/Web (if ever used)
 node_modules/
