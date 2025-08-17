@@ -1,90 +1,32 @@
-Menu Card Maker — UC Merced Internal Use License (Proprietary)
-Version 1.0 — 2025-08-17
+Copyright (c) 2025 Oliver Htway. All rights reserved.
 
-Copyright © 2025
-Oliver Htway (for UC Merced Dining & Retail Services)
+Permission is granted solely to The Regents of the University of California,
+on behalf of UC Merced (“UC Merced”), to use, reproduce, install, execute,
+display, perform, and modify this software and its documentation internally
+for UC Merced’s business purposes. This permission is non-transferable and
+non-sublicensable.
 
-1. Definitions
-   “University” means the University of California, Merced.
-   “Application” means the Menu Card Maker software, including source code and compiled binaries provided in this repository or installer.
-   “Authorized Users” means UC Merced employees, student workers, and contractors acting on behalf of UC Merced.
+Except as expressly permitted above for UC Merced, NO LICENSE IS GRANTED to
+any other person or entity. Without prior written permission from the
+copyright holder, you may NOT copy, modify, merge, publish, distribute,
+redistribute, sublicense, sell, host as a service, or otherwise make the
+software or any derivative works available to any third party.
 
-2. Grant of License (Internal Use Only)
-   Subject to this License, the University and its Authorized Users are granted a non-exclusive, non-transferable, revocable license to
-   install and use the Application solely for UC Merced internal business purposes. This License does not permit public distribution,
-   publication, or use by any party outside UC Merced.
+Trademarks. UC Merced names, logos, and other marks included in this
+repository are the property of their respective owners and may not be used
+without permission.
 
-3. Restrictions
-   a. No Redistribution Outside UC Merced. You may not disclose, publish, or distribute the Application (or any part of it) to non-UC Merced parties.
-   b. No Public Posting. Do not post the code/binaries/assets to public repositories, websites, app stores, or package registries.
-   c. No Sublicensing. You may not sublicense or rent the Application.
-   d. No Reverse Engineering. You may not reverse engineer, decompile, or disassemble the Application except to the extent permitted by law.
-   e. No Removal of Notices. Do not remove or alter copyright, attribution, or license notices.
+Third-Party Assets. Certain fonts and icons included in this repository are
+subject to third-party licenses and are NOT covered by this license. See
+NOTICE for details. You must comply with those third-party licenses.
 
-4. Ownership
-   Except for third-party components noted below, the Application is owned by the author(s) identified above. All rights not expressly
-   granted are reserved.
+Disclaimer. THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY
+CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT,
+OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR
+THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-5. Trademarks & Logos (UC Merced Brand Assets)
-   The UC Merced name, seal, logos, and other brand assets appearing in the Application are the property of The Regents of the University of
-   California. This License does not grant any rights to use UC Merced trademarks, logos, or trade dress outside of the Application as provided.
-   You may not extract, modify, or repurpose these brand assets for any other use.
-
-6. Fonts & Other Excluded Materials (NOT Covered by This License)
-   Certain fonts and visual assets bundled for internal convenience are governed by their own licenses and are NOT licensed by this document.
-   This includes, without limitation:
-     • Campus or vendor-licensed fonts (e.g., Calibri, Minion Pro, Kievit) provided under their respective EULAs.
-     • Any other font files found under server/src/main/resources/menu-card-web/assets/fonts/.
-   You may use these assets only as they appear within the Application for UC Merced internal purposes. Do not extract or redistribute them.
-
-7. Canva Premium Icons (NOT Covered by This License)
-   The Application includes icons sourced from Canva, including Canva Premium content. Such icons are licensed under Canva’s terms and are
-   not licensed for standalone use or redistribution by this License. Do not extract, copy, redistribute, or repurpose these icons outside the
-   Application. All rights remain with Canva and/or its licensors.
-
-8. Third-Party Software (Open-Source Components)
-   The Application includes third-party libraries that are licensed under their own terms. Your use of those components is subject to the
-   relevant third-party licenses, which are incorporated by reference and, where required, included in docs/THIRD_PARTY.md (or the installer).
-
-   Included components (non-exhaustive):
-     • Apache PDFBox — Apache License 2.0
-     • Jackson Databind — Apache License 2.0
-
-   NOTICE (Apache-2.0 summary):
-     Licensed under the Apache License, Version 2.0 (the “Apache License”); you may not use these components except in compliance with the
-     Apache License. You may obtain a copy at http://www.apache.org/licenses/LICENSE-2.0
-     Unless required by applicable law or agreed to in writing, software distributed under the Apache License is distributed on an “AS IS”
-     BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-
-   A full attribution/notice list and license texts are provided in docs/THIRD_PARTY.md.
-
-9. Confidentiality
-   The Application and any bundled internal assets are UC Merced confidential materials. You must take reasonable steps to prevent
-   unauthorized access or disclosure outside UC Merced.
-
-10. Term & Termination
-   This License is effective until terminated. It terminates automatically when you cease to be an Authorized User or upon breach of this License.
-   Upon termination you must uninstall and destroy all copies of the Application in your possession.
-
-11. Disclaimer of Warranty
-   THE APPLICATION IS PROVIDED “AS IS” AND “AS AVAILABLE”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
-   WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT.
-
-12. Limitation of Liability
-   TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL THE AUTHORS OR UC MERCED BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL,
-   CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR FOR ANY LOSS OF PROFITS, DATA, OR GOODWILL, ARISING OUT OF OR RELATED TO THE APPLICATION OR THIS
-   LICENSE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
-
-13. Governing Law
-   This License will be governed by the laws of the State of California, without regard to its conflict of laws rules.
-
-14. Contact
-   For questions about this License or internal distribution, contact UC Merced Dining & Retail Services.
-
-----------------------------------------------------------------
-THIRD-PARTY ASSET & BRAND NOTICES (Summary)
-
-• UC Merced Logos/Marks — property of The Regents of the University of California. Not licensed for reuse outside this Application.
-• Fonts — governed by their respective EULAs; not licensed by this document.
-• Canva Premium Icons — licensed by Canva and/or its licensors; not for standalone reuse or redistribution.
-• Open-Source Libraries — see docs/THIRD_PARTY.md for full license texts (e.g., Apache PDFBox and Jackson under Apache-2.0).
+Termination. Any use in violation of these terms terminates this permission
+automatically and immediately.
