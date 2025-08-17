@@ -22,6 +22,7 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.Executors;
 
 public class ExportServer {
 
@@ -69,9 +70,28 @@ public class ExportServer {
     Map.entry("cellulose","Cellulose gum"), Map.entry("polysorbates","Polysorbates")
   );
 
+  // --- helpers for boot UX & configurability ---
+  private static int resolvePort() {
+    String sys = System.getProperty("PORT");
+    if (sys != null && !sys.isBlank()) return Integer.parseInt(sys.trim());
+    String env = System.getenv("PORT");
+    if (env != null && !env.isBlank()) return Integer.parseInt(env.trim());
+    return 8080; // default
+  }
+
+  private static void openBrowser(int port) {
+    try {
+      if (Desktop.isDesktopSupported()) {
+        Desktop.getDesktop().browse(new URI("http://127.0.0.1:" + port + "/"));
+      }
+    } catch (Exception ignored) {}
+  }
+
   public static void main(String[] args) throws Exception {
-    int port = 8080;
-    HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
+    final int port = resolvePort();
+
+    // Bind explicitly to localhost for internal-only use
+    HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
 
     // Serve the web UI from resources
     server.createContext("/", new StaticFileHandler());
@@ -79,16 +99,18 @@ public class ExportServer {
     // Export endpoint (PDF)
     server.createContext("/export", new ExportHandler());
 
-    server.setExecutor(null);
+    server.setExecutor(Executors.newCachedThreadPool());
     server.start();
-    System.out.println("Server started at http://localhost:" + port);
+
+    // Graceful shutdown
+    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+      try { server.stop(0); } catch (Exception ignored) {}
+    }));
+
+    System.out.println("Server started at http://127.0.0.1:" + port + "/");
 
     // Auto-open the web UI
-    try {
-      Desktop.getDesktop().browse(new URI("http://localhost:" + port + "/"));
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
+    openBrowser(port);
   }
 
   // -------------------- Static file server (serves /menu-card-web/** from resources) --------------------

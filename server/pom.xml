@@ -1,15 +1,17 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" 
+<project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
-         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>ucm.menu</groupId>
   <artifactId>menu-export-server</artifactId>
   <version>1.0.0</version>
 
   <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.source>17</maven.compiler.source>
     <maven.compiler.target>17</maven.compiler.target>
+    <app.name>Menu Card Maker</app.name>
+    <app.vendor>UC Merced Dining &amp; Retail Services</app.vendor>
   </properties>
 
   <dependencies>
@@ -36,7 +38,15 @@
     </resources>
 
     <plugins>
-      <!-- build a single runnable jar -->
+      <!-- Java 17 compilation -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.11.0</version>
+        <configuration><release>17</release></configuration>
+      </plugin>
+
+      <!-- Create a runnable shaded JAR -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-shade-plugin</artifactId>
@@ -46,12 +56,63 @@
             <phase>package</phase>
             <goals><goal>shade</goal></goals>
             <configuration>
+              <shadedArtifactAttached>true</shadedArtifactAttached>
+              <shadedClassifierName>shaded</shadedClassifierName>
               <createDependencyReducedPom>false</createDependencyReducedPom>
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                   <mainClass>ucm.menu.ExportServer</mainClass>
                 </transformer>
               </transformers>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Build a Windows installer via jpackage (Maven-native plugin) -->
+      <plugin>
+        <groupId>org.panteleyev</groupId>
+        <artifactId>jpackage-maven-plugin</artifactId>
+        <version>1.6.6</version>
+        <executions>
+          <execution>
+            <id>windows</id>
+            <goals><goal>jpackage</goal></goals>
+            <phase>package</phase>
+            <configuration>
+              <!-- required by the plugin -->
+              <name>${app.name}</name>
+              <destination>${project.build.directory}/dist</destination>
+
+              <!-- use our shaded jar as input -->
+              <input>${project.build.directory}</input>
+              <mainJar>${project.build.finalName}-shaded.jar</mainJar>
+              <mainClass>ucm.menu.ExportServer</mainClass>
+
+              <!-- Windows options -->
+              <type>EXE</type>
+              <icon>${project.basedir}/../packaging/icon.ico</icon>
+              <appVersion>${project.version}</appVersion>
+              <vendor>${app.vendor}</vendor>
+              <winMenu>true</winMenu>
+              <winShortcut>true</winShortcut>
+              <winDirChooser>true</winDirChooser>
+              <winPerUserInstall>true</winPerUserInstall>
+
+              <!-- bundle a trimmed runtime -->
+              <jLinkOptions>
+                <jLinkOption>--strip-debug</jLinkOption>
+                <jLinkOption>--no-header-files</jLinkOption>
+                <jLinkOption>--no-man-pages</jLinkOption>
+              </jLinkOptions>
+
+              <!-- convenience: erase previous dist dir on rebuild -->
+              <removeDestination>true</removeDestination>
+
+              <!-- default JVM options (port is also overridable via -DPORT=...) -->
+              <javaOptions>
+                <javaOption>-DPORT=8080</javaOption>
+              </javaOptions>
             </configuration>
           </execution>
         </executions>
