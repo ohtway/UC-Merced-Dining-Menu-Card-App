@@ -521,6 +521,13 @@ async function exportPdf(){
   });
 })();
 
+
+// Close the app when the tab/window is closed or navigated away
+window.addEventListener('pagehide', () => {
+  try { navigator.sendBeacon('/shutdown', 'bye'); } catch (e) {}
+});
+
+
 // ========= Init =========
 buildPreviewPanel();
 buildButtons();

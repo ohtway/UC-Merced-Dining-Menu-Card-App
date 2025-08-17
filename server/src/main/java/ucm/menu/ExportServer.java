@@ -70,6 +70,15 @@ public class ExportServer {
     Map.entry("cellulose","Cellulose gum"), Map.entry("polysorbates","Polysorbates")
   );
 
+  // Shared CORS sender for handlers
+  private static void sendCORS(HttpExchange ex, int status, byte[] data) throws IOException {
+    ex.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+    ex.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    ex.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type");
+    ex.sendResponseHeaders(status, data.length);
+    try (OutputStream os = ex.getResponseBody()) { os.write(data); }
+  }
+
   // --- helpers for boot UX & configurability ---
   private static int resolvePort() {
     String sys = System.getProperty("PORT");
@@ -79,12 +88,17 @@ public class ExportServer {
     return 8080; // default
   }
 
+  // Robustly open default browser on Windows and other desktops
   private static void openBrowser(int port) {
+    String url = "http://127.0.0.1:" + port + "/";
     try {
       if (Desktop.isDesktopSupported()) {
-        Desktop.getDesktop().browse(new URI("http://127.0.0.1:" + port + "/"));
+        Desktop.getDesktop().browse(new URI(url));
+        return;
       }
     } catch (Exception ignored) {}
+    try { new ProcessBuilder("cmd", "/c", "start", "", url).inheritIO().start(); return; } catch (Exception ignored) {}
+    try { new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", url).start(); } catch (Exception ignored) {}
   }
 
   public static void main(String[] args) throws Exception {
@@ -99,17 +113,18 @@ public class ExportServer {
     // Export endpoint (PDF)
     server.createContext("/export", new ExportHandler());
 
+    // NEW: Shutdown endpoint (called when the page is closed)
+    server.createContext("/shutdown", new ShutdownHandler(server));
+
     server.setExecutor(Executors.newCachedThreadPool());
     server.start();
 
-    // Graceful shutdown
+    // Graceful shutdown on JVM exit
     Runtime.getRuntime().addShutdownHook(new Thread(() -> {
       try { server.stop(0); } catch (Exception ignored) {}
     }));
 
     System.out.println("Server started at http://127.0.0.1:" + port + "/");
-
-    // Auto-open the web UI
     openBrowser(port);
   }
 
@@ -151,11 +166,37 @@ public class ExportServer {
       if (p.endsWith(".ttf"))  return "font/ttf";
       if (p.endsWith(".woff")) return "font/woff";
       if (p.endsWith(".woff2"))return "font/woff2";
+      if (p.endsWith(".ico"))  return "image/x-icon";
       return "application/octet-stream";
     }
   }
 
-  // -------------------- Export (PDF) handler — same logic, now loads assets from resources --------------------
+  // -------------------- NEW: Shutdown handler --------------------
+  static class ShutdownHandler implements HttpHandler {
+    private final HttpServer server;
+    ShutdownHandler(HttpServer server){ this.server = server; }
+
+    @Override public void handle(HttpExchange ex) throws IOException {
+      if ("OPTIONS".equalsIgnoreCase(ex.getRequestMethod())) {
+        sendCORS(ex, 204, new byte[0]); return;
+      }
+      // Accept GET or POST (sendBeacon uses POST by default)
+      if (!"POST".equalsIgnoreCase(ex.getRequestMethod()) && !"GET".equalsIgnoreCase(ex.getRequestMethod())) {
+        sendCORS(ex, 405, "Method Not Allowed".getBytes(StandardCharsets.UTF_8)); return;
+      }
+
+      sendCORS(ex, 200, "OK".getBytes(StandardCharsets.UTF_8));
+
+      // Delay a tick so the response flushes, then exit
+      new Thread(() -> {
+        try { Thread.sleep(150); } catch (InterruptedException ignored) {}
+        try { server.stop(0); } catch (Exception ignored) {}
+        System.exit(0);
+      }, "shutdown-thread").start();
+    }
+  }
+
+  // -------------------- Export (PDF) handler — loads assets from resources --------------------
   static class ExportHandler implements HttpHandler {
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -188,14 +229,6 @@ public class ExportServer {
         byte[] err = ("Export failed: " + e.getMessage()).getBytes(StandardCharsets.UTF_8);
         sendCORS(ex, 500, err);
       }
-    }
-
-    private void sendCORS(HttpExchange ex, int status, byte[] data) throws IOException {
-      ex.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
-      ex.getResponseHeaders().set("Access-Control-Allow-Methods", "POST, OPTIONS");
-      ex.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type");
-      ex.sendResponseHeaders(status, data.length);
-      try (OutputStream os = ex.getResponseBody()) { os.write(data); }
     }
 
     private byte[] buildPdf(List<Card> cards) throws IOException {

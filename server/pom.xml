@@ -4,7 +4,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>ucm.menu</groupId>
   <artifactId>menu-export-server</artifactId>
-  <version>1.0.0</version>
+  <version>1.0.2</version>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -69,7 +69,7 @@
         </executions>
       </plugin>
 
-      <!-- Build a Windows installer via jpackage (Maven-native plugin) -->
+      <!-- Windows installer via jpackage -->
       <plugin>
         <groupId>org.panteleyev</groupId>
         <artifactId>jpackage-maven-plugin</artifactId>
@@ -77,14 +77,14 @@
         <executions>
           <execution>
             <id>windows</id>
-            <goals><goal>jpackage</goal></goals>
             <phase>package</phase>
+            <goals><goal>jpackage</goal></goals>
             <configuration>
-              <!-- required by the plugin -->
-              <name>${app.name}</name>
+              <!-- launcher name WITHOUT spaces -->
+              <name>MenuCardMaker</name>
               <destination>${project.build.directory}/dist</destination>
 
-              <!-- use our shaded jar as input -->
+              <!-- shaded jar input -->
               <input>${project.build.directory}</input>
               <mainJar>${project.build.finalName}-shaded.jar</mainJar>
               <mainClass>ucm.menu.ExportServer</mainClass>
@@ -95,21 +95,30 @@
               <appVersion>${project.version}</appVersion>
               <vendor>${app.vendor}</vendor>
               <winMenu>true</winMenu>
+              <winMenuGroup>${app.name}</winMenuGroup>
               <winShortcut>true</winShortcut>
               <winDirChooser>true</winDirChooser>
               <winPerUserInstall>true</winPerUserInstall>
+              <winConsole>true</winConsole> <!-- turn ON once to see errors, then set to false -->
 
-              <!-- bundle a trimmed runtime -->
+              <!-- Ensure trimmed runtime has what we need -->
+              <addModules>
+                <addModule>java.desktop</addModule>     <!-- Desktop.browse -->
+                <addModule>jdk.httpserver</addModule>   <!-- com.sun.net.httpserver -->
+                <addModule>java.logging</addModule>     <!-- required by httpserver -->
+                <addModule>java.xml</addModule>         <!-- PDFBox/font parsing uses XML -->
+                <addModule>jdk.unsupported</addModule>  <!-- safety for libraries using Unsafe -->
+              </addModules>
+
+              <!-- Trim & clean -->
               <jLinkOptions>
                 <jLinkOption>--strip-debug</jLinkOption>
                 <jLinkOption>--no-header-files</jLinkOption>
                 <jLinkOption>--no-man-pages</jLinkOption>
               </jLinkOptions>
-
-              <!-- convenience: erase previous dist dir on rebuild -->
               <removeDestination>true</removeDestination>
 
-              <!-- default JVM options (port is also overridable via -DPORT=...) -->
+              <!-- Default JVM options -->
               <javaOptions>
                 <javaOption>-DPORT=8080</javaOption>
               </javaOptions>
