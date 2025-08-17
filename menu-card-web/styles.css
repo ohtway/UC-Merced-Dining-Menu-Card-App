@@ -9,6 +9,17 @@
   font-style: italic;
   font-display: swap;
 }
+@font-face {
+  font-family: "BebasNeue";
+  src: url("assets/fonts/BebasNeue-Regular.ttf") format("truetype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "CalibriBold";
+  src: url("assets/fonts/calibrib.ttf") format("truetype");
+  font-display: swap;
+  font-weight: 700;
+}
 
 html, body {
   margin: 0;
@@ -17,31 +28,83 @@ html, body {
   font-family: Kievit, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
 }
 
-/* Fill the viewport using VW/VH */
-#stage {
-  width: 100vw;
-  height: 100vh;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-}
+/* Stage/SVG */
+#stage { width: 100vw; height: 100vh; display: grid; place-items: center; overflow: hidden; }
+#scene { width: 100%; height: 100%; display: block; }
 
-/* The SVG scales uniformly inside the stage */
-#scene {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-/* The input inside foreignObject inherits the scaling (no JS needed) */
+/* Text input inside foreignObject */
 #itemInput {
   width: 100%;
   height: 100%;
   border: none;
   outline: none;
   background: transparent;
-  /* make placeholder readable across scales */
   font-size: 16px;
   line-height: 1;
 }
 #itemInput::placeholder { color: #888; }
+
+/* Preview (HTML in foreignObject) */
+.preview-scroll { width: 100%; height: 100%; overflow-y: auto; overflow-x: hidden; box-sizing: border-box; padding: 16px; }
+.preview-page { background: linear-gradient(90deg, #000, #0f2b4b 50%, #000); border-radius: 18px; padding: 24px; margin-bottom: 18px; }
+.card-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px 24px; }
+
+.menu-card {
+  position: relative;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: none;               /* preview has no border per your recent tweak */
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 3.57 / 2;
+}
+.menu-card .content { width: 92%; margin: 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+
+.card-name { font-family: CalibriBold, "Segoe UI", Arial, sans-serif; color: #000; line-height: 1.1; margin: 0 0 6px 0; font-size: 26.9px; }
+.card-allergens { font-family: BebasNeue, Arial, sans-serif; color: #c21b1b; letter-spacing: .5px; margin: 2px 0 0 0; font-size: 16px; }
+.card-aux { font-family: BebasNeue, Arial, sans-serif; color: #666; letter-spacing: .5px; margin: 0; font-size: 16px; }
+
+.card-badges { position: absolute; top: 6px; right: 6px; display: flex; gap: 6px; }
+.card-badges img { width: 40px; height: auto; }
+
+.menu-card.selected { outline: 4px dashed #0f2b4b; outline-offset: 4px; cursor: pointer; }
+.menu-card:hover { cursor: pointer; }
+
+/* ---------- Modal for "Add Allergen" ---------- */
+.modal.hidden { display: none; }
+.modal {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(0,0,0,.35);
+  display: grid; place-items: center;
+}
+.modal-card {
+  width: min(520px, 92vw);
+  background: #fff; border-radius: 16px;
+  padding: 20px 18px 16px;
+  box-shadow: 0 30px 60px rgba(0,0,0,.25);
+  position: relative;
+}
+.modal-card h3 { margin: 0 0 8px; font-size: 20px; }
+.modal-card .subtle { color: #555; margin: 0 0 12px; }
+.modal-card input {
+  width: 100%; font-size: 16px;
+  border: 1px solid #ccc; border-radius: 10px; padding: 10px 12px;
+}
+.modal-actions { margin-top: 12px; display: flex; justify-content: flex-end; gap: 8px; }
+.btn {
+  background: #012e64; color: #fff; border: 0; border-radius: 999px; padding: 8px 14px; cursor: pointer;
+  box-shadow: 0 10px 20px rgba(0,0,0,.35);
+}
+.btn:active { transform: translateY(1px); box-shadow: 0 6px 12px rgba(0,0,0,.25); }
+.modal-close {
+  position: absolute; right: 8px; top: 6px; width: 32px; height: 32px; border-radius: 50%;
+  border: none; background: #f2f2f2; cursor: pointer; font-size: 22px; line-height: 1;
+  box-shadow: 0 10px 20px rgba(0,0,0,.35);
+}
+.modal-close:active { transform: translateY(1px); box-shadow: 0 6px 12px rgba(0,0,0,.25); }
+
+/* ---------- Export spinner (SVG) ----------- */
+.svg-spinner { transform-origin: center; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }

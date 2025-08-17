@@ -6,50 +6,70 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="preload" href="assets/fonts/Kievit Medium.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="preload" href="assets/fonts/Minion Pro Italic.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="preload" href="assets/fonts/BebasNeue-Regular.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="preload" href="assets/fonts/calibrib.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div id="stage">
-    <!-- Uniform scaling handled by viewBox + preserveAspectRatio -->
     <svg id="scene" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet">
       <defs>
-        <linearGradient id="previewGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stop-color="#000000"/>
-          <stop offset="50%"  stop-color="#0f2b4b"/>
-          <stop offset="100%" stop-color="#000000"/>
-        </linearGradient>
+        <!-- Soft button shadows -->
+        <filter id="btnShadow" filterUnits="objectBoundingBox"
+                x="-100%" y="-100%" width="400%" height="400%"
+                color-interpolation-filters="sRGB">
+          <feOffset in="SourceAlpha" dx="23" dy="31" result="off"/>
+          <feGaussianBlur in="off" stdDeviation="20" result="blur"/>
+          <feFlood flood-color="#000000" flood-opacity="0.40"/>
+          <feComposite in2="blur" operator="in" result="shadow"/>
+          <feComposite in="SourceGraphic" in2="shadow" operator="over"/>
+        </filter>
+        <filter id="btnShadowPressed" filterUnits="objectBoundingBox"
+                x="-100%" y="-100%" width="400%" height="400%"
+                color-interpolation-filters="sRGB">
+          <feOffset in="SourceAlpha" dx="8" dy="10" result="off"/>
+          <feGaussianBlur in="off" stdDeviation="10" result="blur"/>
+          <feFlood flood-color="#000000" flood-opacity="0.35"/>
+          <feComposite in2="blur" operator="in" result="shadow"/>
+          <feComposite in="SourceGraphic" in2="shadow" operator="over"/>
+        </filter>
+
         <style>
           .kievit { font-family: Kievit, sans-serif; }
           .minion { font-family: "Minion Italic", serif; font-style: italic; }
         </style>
       </defs>
 
-      <!-- Right gray panel -->
-      <rect x="1077.8" y="0" width="842.2" height="1080" fill="#e5e5e5" />
+      <!-- Right panel: two rects so only left corners look rounded -->
+      <rect x="1077.8" y="0" width="842.2" height="1080" fill="#e5e5e5" rx="92" ry="92"/>
+      <rect x="1498.9" y="0" width="421.1" height="1080" fill="#e5e5e5"/>
 
       <!-- Titles -->
       <text class="kievit" x="47.3"  y="38.6"  font-size="42">Menu Card Maker</text>
       <text class="minion" x="47.3"  y="96.9"  font-size="20" fill="#222">Version 1.0.5</text>
 
-      <!-- Item name -->
-      <text class="kievit" x="54.7"  y="198.2" font-size="18">Item Name:</text>
-      <!-- Outline for the input -->
-      <rect id="itemOutline" x="165" y="193.8" width="766.4" height="31.8" fill="#fff" stroke="#9f9f9f" stroke-width="2" rx="6"/>
-
-      <!-- foreignObject input (scales with SVG) -->
-      <foreignObject x="171" y="197.8" width="754.4" height="23.8">
+      <!-- Item name row -->
+      <rect id="itemOutline" x="165" y="186.8" width="766.4" height="31.8"
+            fill="#fff" stroke="#9f9f9f" stroke-width="2" rx="6"/>
+      <text class="kievit" x="54.7" y="202.7" font-size="18" dominant-baseline="middle">Item Name:</text>
+      <foreignObject x="171" y="190.8" width="754.4" height="23.8">
         <div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;">
           <input id="itemInput" type="text" placeholder="Type item name..." />
         </div>
       </foreignObject>
+      <text id="nameError" class="kievit" x="171" y="228" font-size="14" fill="#c21b1b"></text>
 
       <!-- Section headers -->
       <text class="kievit" x="54.7" y="295.4" font-size="18">Allergens:</text>
-      <text class="kievit" x="505"  y="295.4" font-size="18">Attributes:</text>
-      <text class="kievit" x="502"  y="472.6" font-size="18">Artificial Colors:</text>
-      <text class="kievit" x="716"  y="472.6" font-size="18">Texture &amp; Stabilizers:</text>
+      <text id="allergenHint" class="kievit" x="150" y="295.4" font-size="18" fill="#666"></text>
 
-      <!-- Icon groups populated by JS (base coords; will scale by viewBox) -->
+      <text class="kievit" x="505"  y="295.4" font-size="18">Attributes:</text>
+      <text id="attributeHint" class="kievit" x="605" y="295.4" font-size="18" fill="#666"></text>
+
+      <text id="artColorsHdr" class="kievit" x="502" y="500" font-size="18">Artificial Colors:</text>
+      <text id="textureHdr"  class="kievit" x="716" y="500" font-size="18">Texture &amp; Stabilizers:</text>
+
+      <!-- Icon groups (left controls) -->
       <g id="allergenCircles"></g>
       <g id="attributeCircles"></g>
       <g id="artColorPills"></g>
@@ -58,12 +78,25 @@
       <!-- Logo -->
       <image id="logoImg" href="assets/icons/dining_logo.png" x="37.7" y="921.7" width="156.6" height="156.6"/>
 
-      <!-- Bottom buttons (labels via JS for brevity) -->
-      <g id="bottomButtons"></g>
-
-      <!-- Preview area -->
+      <!-- Preview first (so buttons drawn later stay on top) -->
       <g id="previewPanel"></g>
+
+      <!-- Buttons last -->
+      <g id="bottomButtons"></g>
     </svg>
+  </div>
+
+  <!-- Custom Allergen Modal -->
+  <div id="customAllergenModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="customAllergenTitle">
+    <div class="modal-card">
+      <button id="customAllergenClose" class="modal-close" aria-label="Close">×</button>
+      <h3 id="customAllergenTitle">Add Allergen</h3>
+      <p class="subtle">Type a custom allergen and press <b>Enter</b> to add.</p>
+      <input id="customAllergenInput" type="text" placeholder="e.g., Watermelon" autocomplete="off" />
+      <div class="modal-actions">
+        <button id="customAllergenAddBtn" class="btn">Add</button>
+      </div>
+    </div>
   </div>
 
   <script src="app.js"></script>
