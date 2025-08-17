@@ -42,7 +42,7 @@ const LABEL = {
   carrageenan:"Carrageenan", xanthan:"Xanthan gum", cellulose:"Cellulose gum", polysorbates:"Polysorbates"
 };
 
-// ========= Shortcuts =========
+// ========= DOM Shortcuts =========
 const svgNS = "http://www.w3.org/2000/svg";
 const allergenCircles = document.getElementById("allergenCircles");
 const attributeCircles= document.getElementById("attributeCircles");
@@ -99,7 +99,7 @@ function T(txt,x,y,size,color="#000",anchor="start",klass="kievit"){
   return el;
 }
 
-// ========= Shadows helpers (apply to base shape only) =========
+// ========= Shadows helpers =========
 function setNormalShadow(shape){ shape.setAttribute("filter","url(#btnShadow)"); }
 function setPressedShadow(shape){ shape.setAttribute("filter","url(#btnShadowPressed)"); }
 
@@ -110,8 +110,8 @@ function circleSelectable(parentG, x, y, d, fill, stroke, key, section){
 
   const borderW = Math.max(1, Math.round(d * 0.02));
   const circle = R(x, y, d, d, fill, stroke, borderW, d/2);
-  circle.classList.add("btn-anim");          // <-- for wave
-  setNormalShadow(circle);                    // <-- shadow on shape only
+  circle.classList.add("btn-anim");
+  setNormalShadow(circle);
   g.appendChild(circle);
 
   const icon = ICON[key];
@@ -120,7 +120,6 @@ function circleSelectable(parentG, x, y, d, fill, stroke, key, section){
     g.appendChild(I(icon, x+(d-s)/2, y+(d-s)/2, s, s));
   }
 
-  // hover hint
   const label  = LABEL[key] || key;
   const hintTarget = (section === "allergen") ? allergenHintEl : attributeHintEl;
   const show = () => { if (hintTarget) hintTarget.textContent = `— ${label}`; };
@@ -129,7 +128,6 @@ function circleSelectable(parentG, x, y, d, fill, stroke, key, section){
   g.addEventListener("pointerenter", show);
   g.addEventListener("pointerleave", hide);
 
-  // Add Allergen -> open modal
   if (key === "add_allergen") {
     g.style.cursor = "pointer";
     g.addEventListener("click", () => openCustomModal());
@@ -137,7 +135,7 @@ function circleSelectable(parentG, x, y, d, fill, stroke, key, section){
     return;
   }
 
-  // toggle selection
+  // Toggle selection
   g.style.cursor = "pointer";
   g.addEventListener("click", () => {
     const set = (section === "allergen") ? state.selAllergens : state.selAttributes;
@@ -424,21 +422,31 @@ function resetSelectionsUI(){
   if (attributeHintEl) attributeHintEl.textContent = "";
 }
 
-// ========= Export (wave animation instead of spinner) =========
+// ========= Export (wave animation) =========
 function setExportBusy(on){
   state.exportBusy = on;
+
+  // Disable only the export hit target
   if (exportHit) exportHit.style.pointerEvents = on ? "none" : "auto";
 
+  // Toggle global class (HTML button shimmer)
+  document.body.classList.toggle("wave-loading", on);
+
+  // Explicitly toggle the SVG wide shine overlay
+  const shine = document.getElementById("waveShine");
+  if (shine) shine.style.display = on ? "block" : "none";
+
+  // Apply .wave-on to all button base shapes
   const shapes = document.querySelectorAll(".btn-anim");
   shapes.forEach((el, i) => {
     if (on){
-      const delay = (i % 10) * 0.12;    // stagger
+      const delay = (i % 10) * 0.12; // subtle stagger
       el.classList.add("wave-on");
       el.style.animationDelay = `${delay}s`;
     } else {
       el.classList.remove("wave-on");
       el.style.animationDelay = "";
-      el.style.opacity = "";            // reset any lingering style
+      el.style.opacity = "";
     }
   });
 }
@@ -446,6 +454,10 @@ function setExportBusy(on){
 async function exportPdf(){
   if (state.exportBusy) return;
   setExportBusy(true);
+
+  // Ensure the wave paints before starting the fetch
+  await new Promise(requestAnimationFrame);
+
   try{
     const res = await fetch("http://localhost:8080/export", {
       method: "POST",
@@ -488,12 +500,13 @@ async function exportPdf(){
   [["halal",531.7,352.1],["vegan",651.9,352.1],["caffeine",772.2,352.1]]
     .forEach(([key,x,y]) => circleSelectable(attributeCircles, x, y, 100.5, "#efeeee", "#fff8f8", key, "attribute"));
 
+  // Vertical layout for color and texture pills
   [
     [528.8,"Red 40","red40","#ff8181","#ff9a9a"],
-    [613.8,"Yellow 5","yellow5","#fffa81","#f4e4a2"],   // +118
-    [698.8,"Blue 1","blue1","#81f4ff","#c8fcff"],       // +236
-    [783.8,"Blue 2","blue2","#81bfff","#c2d5ff"],       // +354
-    [868.8,"Green 3","green3","#abebbe","#e3ffd7"],    // +472 (still within 1080)
+    [613.8,"Yellow 5","yellow5","#fffa81","#f4e4a2"],
+    [698.8,"Blue 1","blue1","#81f4ff","#c8fcff"],
+    [783.8,"Blue 2","blue2","#81bfff","#c2d5ff"],
+    [868.8,"Green 3","green3","#abebbe","#e3ffd7"],
   ].forEach(([y,label,key,fill,stroke])=>{
     pillSelectable(artColorPills, 502, y, 170.4, 49.7, fill, stroke, key, label, state.selColors, "color");
   });
@@ -508,7 +521,7 @@ async function exportPdf(){
   });
 })();
 
-// Init
+// ========= Init =========
 buildPreviewPanel();
 buildButtons();
 setupKeys();

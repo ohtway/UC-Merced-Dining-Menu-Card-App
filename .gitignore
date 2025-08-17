@@ -1,0 +1,22 @@
+﻿# OS
+.DS_Store
+Thumbs.db
+
+# Java/Maven
+/serve*/target/
+/**/target/
+*.iml
+.idea/
+
+# Local builds/installers
+/dist/
+/build/
+/out/
+
+# Logs & temp
+*.log
+/tmp/
+/temp/
+
+# Node/Web (if ever used)
+node_modules/

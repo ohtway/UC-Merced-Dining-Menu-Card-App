@@ -15,14 +15,13 @@ import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 
+import java.awt.Desktop;
 import java.awt.Color;
 import java.io.*;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class ExportServer {
 
@@ -71,22 +70,72 @@ public class ExportServer {
   );
 
   public static void main(String[] args) throws Exception {
-    File base = args.length > 0 ? new File(args[0]) : new File("../menu-card-web");
-
     int port = 8080;
     HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
-    server.createContext("/export", new ExportHandler(base));
+
+    // Serve the web UI from resources
+    server.createContext("/", new StaticFileHandler());
+
+    // Export endpoint (PDF)
+    server.createContext("/export", new ExportHandler());
+
     server.setExecutor(null);
-    System.out.println("Export server on http://localhost:" + port + "/export");
-    System.out.println("Assets base: " + base.getAbsolutePath());
     server.start();
+    System.out.println("Server started at http://localhost:" + port);
+
+    // Auto-open the web UI
+    try {
+      Desktop.getDesktop().browse(new URI("http://localhost:" + port + "/"));
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
   }
 
-  static class ExportHandler implements HttpHandler {
-    private final File baseDir;
-    private final ObjectMapper mapper = new ObjectMapper();
+  // -------------------- Static file server (serves /menu-card-web/** from resources) --------------------
+  static class StaticFileHandler implements HttpHandler {
+    @Override
+    public void handle(HttpExchange exchange) throws IOException {
+      String path = exchange.getRequestURI().getPath();
 
-    ExportHandler(File baseDir){ this.baseDir = baseDir; }
+      // Default route -> index
+      if (path.equals("/") || path.equals("")) {
+        path = "/menu-card-web/index.html";
+      } else if (!path.startsWith("/menu-card-web/")) {
+        // Map /something to /menu-card-web/something so relative paths like "assets/..." work
+        path = "/menu-card-web" + path;
+      }
+
+      InputStream resource = getClass().getResourceAsStream(path);
+      if (resource == null) {
+        String resp = "404 Not Found: " + path;
+        exchange.sendResponseHeaders(404, resp.length());
+        try (OutputStream os = exchange.getResponseBody()) { os.write(resp.getBytes(StandardCharsets.UTF_8)); }
+        return;
+      }
+
+      byte[] bytes = resource.readAllBytes();
+      exchange.getResponseHeaders().add("Content-Type", guessMime(path));
+      exchange.sendResponseHeaders(200, bytes.length);
+      try (OutputStream os = exchange.getResponseBody()) { os.write(bytes); }
+    }
+
+    private String guessMime(String path) {
+      String p = path.toLowerCase(Locale.ROOT);
+      if (p.endsWith(".html")) return "text/html; charset=utf-8";
+      if (p.endsWith(".css"))  return "text/css; charset=utf-8";
+      if (p.endsWith(".js"))   return "application/javascript; charset=utf-8";
+      if (p.endsWith(".png"))  return "image/png";
+      if (p.endsWith(".jpg") || p.endsWith(".jpeg")) return "image/jpeg";
+      if (p.endsWith(".ttf"))  return "font/ttf";
+      if (p.endsWith(".woff")) return "font/woff";
+      if (p.endsWith(".woff2"))return "font/woff2";
+      return "application/octet-stream";
+    }
+  }
+
+  // -------------------- Export (PDF) handler — same logic, now loads assets from resources --------------------
+  static class ExportHandler implements HttpHandler {
+    private final ObjectMapper mapper = new ObjectMapper();
 
     @Override public void handle(HttpExchange ex) throws IOException {
       if ("OPTIONS".equalsIgnoreCase(ex.getRequestMethod())) {
@@ -128,17 +177,16 @@ public class ExportServer {
     }
 
     private byte[] buildPdf(List<Card> cards) throws IOException {
-      File fonts = new File(baseDir, "assets/fonts");
-      File icons = new File(baseDir, "assets/icons");
-
       try (PDDocument doc = new PDDocument()) {
-        PDType0Font fontName  = PDType0Font.load(doc, new File(fonts, "calibrib.ttf"));
-        PDType0Font fontBebas = PDType0Font.load(doc, new File(fonts, "BebasNeue-Regular.ttf"));
+        // Fonts from resources
+        PDType0Font fontName  = PDType0Font.load(doc, getResource("/menu-card-web/assets/fonts/calibrib.ttf"));
+        PDType0Font fontBebas = PDType0Font.load(doc, getResource("/menu-card-web/assets/fonts/BebasNeue-Regular.ttf"));
 
-        PDImageXObject imgHalal = PDImageXObject.createFromFile(new File(icons, "attributes_halal_card_icon.png").getAbsolutePath(), doc);
-        PDImageXObject imgVegan = PDImageXObject.createFromFile(new File(icons, "attributes_vegan_icon.png").getAbsolutePath(), doc);
-        PDImageXObject imgCaf   = PDImageXObject.createFromFile(new File(icons, "attributes_contains_caffeine_icon.png").getAbsolutePath(), doc);
-        PDImageXObject imgCC    = PDImageXObject.createFromFile(new File(icons, "allergen_cc_may_contain_icon.png").getAbsolutePath(), doc);
+        // Icons from resources (use createFromByteArray)
+        PDImageXObject imgHalal = PDImageXObject.createFromByteArray(doc, readAll("/menu-card-web/assets/icons/attributes_halal_card_icon.png"), "halal");
+        PDImageXObject imgVegan = PDImageXObject.createFromByteArray(doc, readAll("/menu-card-web/assets/icons/attributes_vegan_icon.png"), "vegan");
+        PDImageXObject imgCaf   = PDImageXObject.createFromByteArray(doc, readAll("/menu-card-web/assets/icons/attributes_contains_caffeine_icon.png"), "caf");
+        PDImageXObject imgCC    = PDImageXObject.createFromByteArray(doc, readAll("/menu-card-web/assets/icons/allergen_cc_may_contain_icon.png"), "cc");
 
         int perPage = COLS * ROWS;
         int pages   = Math.max(1, (int)Math.ceil(cards.size() / (double)perPage));
@@ -221,7 +269,7 @@ public class ExportServer {
                 List<String> allergensLines = allergensStr==null ? List.of() : wrapText(fontBebas, LINE_SIZE, allergensStr, usableW);
                 List<String> containsLines  = containsStr==null  ? List.of() : wrapText(fontBebas, LINE_SIZE, containsStr,  usableW);
 
-                // If all lines would exceed card height, drop/truncate from the bottom with ellipsis
+                // If all lines would exceed card height, drop/truncate
                 List<Line> flow = new ArrayList<>();
                 for (String s : nameLines)      flow.add(new Line(s, fontName,  NAME_SIZE, COL_BLACK));
                 for (String s : allergensLines) flow.add(new Line(s, fontBebas, LINE_SIZE, COL_RED));
@@ -230,20 +278,15 @@ public class ExportServer {
                 float totalH = 0;
                 for (int i=0;i<flow.size();i++) totalH += flow.get(i).size + (i>0 ? LINE_GAP : 0);
 
-                // trim with ellipsis if too tall
                 if (totalH > usableH) {
-                  // available line slots
                   int maxLines = (int)Math.floor((usableH + LINE_GAP) / (LINE_SIZE + LINE_GAP));
-                  // ensure at least name line shows
                   maxLines = Math.max(1, maxLines);
                   if (flow.size() > maxLines) {
                     flow = flow.subList(0, maxLines);
-                    // add ellipsis to the last line if it isn't already short
                     Line last = flow.get(flow.size()-1);
                     String clipped = addEllipsisToFit(last.text, last.font, last.size, usableW);
                     flow.set(flow.size()-1, new Line(clipped, last.font, last.size, last.color));
                   }
-                  // recompute height
                   totalH = 0;
                   for (int i=0;i<flow.size();i++) totalH += flow.get(i).size + (i>0 ? LINE_GAP : 0);
                 }
@@ -287,12 +330,10 @@ public class ExportServer {
           line.setLength(0); line.append(trial);
         } else {
           if (line.length()==0){
-            // single word longer than width -> hard cut with ellipsis
             out.add(hardClipWithEllipsis(font, size, word, maxW));
           } else {
             out.add(line.toString());
             line.setLength(0);
-            // try the word again on a new line
             words.add(0, word);
           }
         }
@@ -329,6 +370,18 @@ public class ExportServer {
       cs.newLineAtOffset(x, baselineY);
       cs.showText(text);
       cs.endText();
+    }
+
+    // ---- resource helpers (load fonts/images from inside the JAR) ----
+    private InputStream getResource(String path) throws IOException {
+      InputStream in = getClass().getResourceAsStream(path);
+      if (in == null) throw new FileNotFoundException("Resource not found: " + path);
+      return in;
+    }
+    private byte[] readAll(String path) throws IOException {
+      try (InputStream in = getResource(path)) {
+        return in.readAllBytes();
+      }
     }
   }
 }

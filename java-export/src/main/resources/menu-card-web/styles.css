@@ -1,26 +1,10 @@
-@font-face {
-  font-family: "Kievit";
-  src: url("assets/fonts/Kievit Medium.ttf") format("truetype");
-  font-display: swap;
-}
-@font-face {
-  font-family: "Minion Italic";
-  src: url("assets/fonts/Minion Pro Italic.ttf") format("truetype");
-  font-style: italic;
-  font-display: swap;
-}
-@font-face {
-  font-family: "BebasNeue";
-  src: url("assets/fonts/BebasNeue-Regular.ttf") format("truetype");
-  font-display: swap;
-}
-@font-face {
-  font-family: "CalibriBold";
-  src: url("assets/fonts/calibrib.ttf") format("truetype");
-  font-display: swap;
-  font-weight: 700;
-}
+/* -------------------- Fonts -------------------- */
+@font-face { font-family: "Kievit"; src: url("assets/fonts/Kievit Medium.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "Minion Italic"; src: url("assets/fonts/Minion Pro Italic.ttf") format("truetype"); font-style: italic; font-display: swap; }
+@font-face { font-family: "BebasNeue"; src: url("assets/fonts/BebasNeue-Regular.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "CalibriBold"; src: url("assets/fonts/calibrib.ttf") format("truetype"); font-display: swap; font-weight: 700; }
 
+/* -------------------- Base -------------------- */
 html, body {
   margin: 0;
   height: 100%;
@@ -32,6 +16,7 @@ html, body {
 #stage { width: 100vw; height: 100vh; display: grid; place-items: center; overflow: hidden; }
 #scene { width: 100%; height: 100%; display: block; }
 
+/* -------------------- Inputs -------------------- */
 /* Text input inside foreignObject */
 #itemInput {
   width: 100%;
@@ -44,7 +29,7 @@ html, body {
 }
 #itemInput::placeholder { color: #888; }
 
-/* Preview (HTML in foreignObject) */
+/* -------------------- Preview (HTML in foreignObject) -------------------- */
 .preview-scroll { width: 100%; height: 100%; overflow-y: auto; overflow-x: hidden; box-sizing: border-box; padding: 16px; }
 .preview-page { background: linear-gradient(90deg, #000, #0f2b4b 50%, #000); border-radius: 18px; padding: 24px; margin-bottom: 18px; }
 .card-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px 24px; }
@@ -72,7 +57,7 @@ html, body {
 .menu-card.selected { outline: 4px dashed #0f2b4b; outline-offset: 4px; cursor: pointer; }
 .menu-card:hover { cursor: pointer; }
 
-/* ---------- Modal for "Add Allergen" ---------- */
+/* -------------------- Modal -------------------- */
 .modal.hidden { display: none; }
 .modal {
   position: fixed; inset: 0; z-index: 50;
@@ -93,11 +78,13 @@ html, body {
   border: 1px solid #ccc; border-radius: 10px; padding: 10px 12px;
 }
 .modal-actions { margin-top: 12px; display: flex; justify-content: flex-end; gap: 8px; }
+
 .btn {
   background: #012e64; color: #fff; border: 0; border-radius: 999px; padding: 8px 14px; cursor: pointer;
   box-shadow: 0 10px 20px rgba(0,0,0,.35);
 }
 .btn:active { transform: translateY(1px); box-shadow: 0 6px 12px rgba(0,0,0,.25); }
+
 .modal-close {
   position: absolute; right: 8px; top: 6px; width: 32px; height: 32px; border-radius: 50%;
   border: none; background: #f2f2f2; cursor: pointer; font-size: 22px; line-height: 1;
@@ -105,6 +92,70 @@ html, body {
 }
 .modal-close:active { transform: translateY(1px); box-shadow: 0 6px 12px rgba(0,0,0,.25); }
 
-/* ---------- Export spinner (SVG) ----------- */
+/* -------------------- Loading: Wave/Shimmer -------------------- */
+/* Primary shimmer effect across all native HTML buttons and .btn */
+@keyframes wave-sheen {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(120%);  }
+}
+
+/* Subtle fade fallback (or alt style) */
+@keyframes waveFade { 0%,100% { opacity: 1 } 50% { opacity: .55 } }
+
+/* Enable shimmer when <body> has .wave-loading (toggle via JS) */
+body.wave-loading button,
+body.wave-loading .btn {
+  position: relative;
+  overflow: hidden;
+  filter: saturate(0.85); /* optional dim */
+}
+
+body.wave-loading button::after,
+body.wave-loading .btn::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(110deg,
+    transparent 0%,
+    rgba(255,255,255,0.22) 45%,
+    rgba(255,255,255,0.35) 50%,
+    rgba(255,255,255,0.22) 55%,
+    transparent 100%);
+  transform: translateX(-120%);
+  animation: wave-sheen 1.1s linear infinite;
+  pointer-events: none;
+}
+
+/* Legacy hook: if you manually add .wave-on to a button, it will shimmer too */
+.wave-on { position: relative; overflow: hidden; }
+.wave-on::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(110deg,
+    transparent 0%,
+    rgba(255,255,255,0.22) 45%,
+    rgba(255,255,255,0.35) 50%,
+    rgba(255,255,255,0.22) 55%,
+    transparent 100%);
+  transform: translateX(-120%);
+  animation: wave-sheen 1.1s linear infinite;
+  pointer-events: none;
+}
+
+/* Reduced motion: disable shimmer band, use gentle fade instead */
+@media (prefers-reduced-motion: reduce) {
+  body.wave-loading button::after,
+  body.wave-loading .btn::after,
+  .wave-on::after { animation: none; content: none; }
+  body.wave-loading button,
+  body.wave-loading .btn,
+  .wave-on { animation: waveFade 1.2s ease-in-out infinite; }
+}
+
+/* -------------------- SVG Export Spinner (optional) -------------------- */
 .svg-spinner { transform-origin: center; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* -------------------- SVG-wide Wave Overlay Toggle -------------------- */
+/* The inline <svg> contains a group with id="waveShine" (the diagonal band). */
+#waveShine { visibility: hidden; }
+body.wave-loading #waveShine { visibility: visible; }
