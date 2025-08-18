@@ -1,8 +1,15 @@
 Menu Card Maker (UC Merced • Internal)
 
+![Menu Card Maker](https://github.com/user-attachments/assets/a42f2fff-e88c-4497-acef-34c78aa4a19d)
+![Menu Card Maker (1)](https://github.com/user-attachments/assets/e6793137-4001-43f1-af8c-858b28f3a19a)
+![Menu Card Maker (2)](https://github.com/user-attachments/assets/f8af5661-64ef-4b3c-b4a5-6fd87be882e4)
+
+
 Generate printable dining menu cards with consistent branding, allergen badges, and “contains” notes. The app runs a tiny local server and opens in your browser—no internet needed, no data leaves your machine.
 
 Note from Oliver: This is my first app with a real Windows installer 🙌. If parts of the structure feel odd, thanks for bearing with me—PRs and suggestions welcome!
+
+![Menu Card Maker (3)](https://github.com/user-attachments/assets/4cfd3a73-4228-4a36-a76f-338a5b832731)
 
 What it does
 
