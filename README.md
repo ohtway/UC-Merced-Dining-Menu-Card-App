@@ -1,10 +1,10 @@
 Menu Card Maker (UC Merced • Internal)
 
-## Mac preview 2.0.1
+## Mac preview 2.0.2
 
-[**Download the Mac installer (.dmg)**](https://github.com/ohtway/UC-Merced-Dining-Menu-Card-App/releases/download/v2.0.1/Menu-Card-Maker-2.0.1-LOCAL-TEST-mac-universal.dmg) · [Release notes, ZIP, and checksums](https://github.com/ohtway/UC-Merced-Dining-Menu-Card-App/releases/tag/v2.0.1)
+[**Download the Mac installer (.dmg)**](https://github.com/ohtway/UC-Merced-Dining-Menu-Card-App/releases/download/v2.0.2/Menu-Card-Maker-2.0.2-LOCAL-TEST-mac-universal.dmg) · [Release notes, ZIP, and checksums](https://github.com/ohtway/UC-Merced-Dining-Menu-Card-App/releases/tag/v2.0.2)
 
-For **macOS 12 or later**, with one universal app for **Apple Silicon and Intel**. Open the DMG, drag Menu Card Maker into Applications, and launch it. Version 2 opens its own desktop window without Terminal or a browser. This update keeps card text centered when badges leave room, while protecting against text/badge collisions in the preview and exported PDF.
+For **macOS 12 or later**, with one universal app for **Apple Silicon and Intel**. Open the DMG, drag Menu Card Maker into Applications, and launch it. Version 2 opens its own desktop window without Terminal or a browser. This update simplifies the item-name field to one rounded focus border and vertically centers a single preview page when there is room. Multiple pages scroll normally. Card text remains centered when badges leave room, with collision protection in the preview and exported PDF.
 
 This preview is **unsigned and unnotarized**. macOS may block its first launch. Automatic updates are disabled; install newer previews manually. The `LOCAL-TEST` download name identifies this build type.
 
