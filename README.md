@@ -1,5 +1,19 @@
 Menu Card Maker (UC Merced • Internal)
 
+## Mac preview 2.0.1
+
+[**Download the Mac installer (.dmg)**](https://github.com/ohtway/UC-Merced-Dining-Menu-Card-App/releases/download/v2.0.1/Menu-Card-Maker-2.0.1-LOCAL-TEST-mac-universal.dmg) · [Release notes, ZIP, and checksums](https://github.com/ohtway/UC-Merced-Dining-Menu-Card-App/releases/tag/v2.0.1)
+
+For **macOS 12 or later**, with one universal app for **Apple Silicon and Intel**. Open the DMG, drag Menu Card Maker into Applications, and launch it. Version 2 opens its own desktop window without Terminal or a browser. This update keeps card text centered when badges leave room, while protecting against text/badge collisions in the preview and exported PDF.
+
+This preview is **unsigned and unnotarized**. macOS may block its first launch. Automatic updates are disabled; install newer previews manually. The `LOCAL-TEST` download name identifies this build type.
+
+The existing **Windows v1.0.2** release remains available separately; a Windows version 2 installer has not been published. Current version 2 source and Windows handoff notes live in the [development repository](https://github.com/ohtway/UC-Merced-Dining-Menu-Card-App-Dev/tree/agent/electron-main-ui).
+
+## Legacy Windows v1.0.2 reference
+
+The screenshots, browser-based instructions, and Java build notes below describe the older Windows application, not the Mac preview above.
+
 ![Menu Card Maker](https://github.com/user-attachments/assets/a42f2fff-e88c-4497-acef-34c78aa4a19d)
 ![Menu Card Maker (1)](https://github.com/user-attachments/assets/e6793137-4001-43f1-af8c-858b28f3a19a)
 ![Menu Card Maker (2)](https://github.com/user-attachments/assets/f8af5661-64ef-4b3c-b4a5-6fd87be882e4)
