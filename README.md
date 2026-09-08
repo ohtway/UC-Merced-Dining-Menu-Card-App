@@ -1,5 +1,15 @@
 Menu Card Maker (UC Merced • Internal)
 
+## Windows preview 2.0.2
+
+[**Download the Windows installer (.exe)**](https://github.com/ohtway/UC-Merced-Dining-Menu-Card-App/releases/download/v2.0.2/Menu-Card-Maker-2.0.2-PREVIEW-win-x64.exe) · [Windows checksum](https://github.com/ohtway/UC-Merced-Dining-Menu-Card-App/releases/download/v2.0.2/SHA256SUMS-2.0.2-win.txt) · [Release notes and all downloads](https://github.com/ohtway/UC-Merced-Dining-Menu-Card-App/releases/tag/v2.0.2)
+
+For **Windows 10/11 x64**. Run the installer, then open **Menu Card Maker** from the desktop or Start Menu. Version 2 opens its own desktop window without Java, Node, or a browser and uses the same app icon as the Mac build. This preview is **unsigned**; Windows may show an unknown-publisher or SmartScreen notice.
+
+The app asks when a newer Windows installer is available on GitHub. Choose **Download Windows installer**, close the app normally to save your work, then run the downloaded EXE using the existing installation folder. Version 2 upgrades replace old application files and preserve saved menus and drafts. You can also check for updates from the version button. This preview uses manual installer updates.
+
+Existing Windows 1.x users need a one-time version 2 installation. The legacy Java/browser app and its browser data are not automatically migrated or removed; verify/export needed content before uninstalling the old app through Windows Settings.
+
 ## Mac preview 2.0.2
 
 [**Download the Mac installer (.dmg)**](https://github.com/ohtway/UC-Merced-Dining-Menu-Card-App/releases/download/v2.0.2/Menu-Card-Maker-2.0.2-LOCAL-TEST-mac-universal.dmg) · [Release notes, ZIP, and checksums](https://github.com/ohtway/UC-Merced-Dining-Menu-Card-App/releases/tag/v2.0.2)
@@ -8,11 +18,11 @@ For **macOS 12 or later**, with one universal app for **Apple Silicon and Intel*
 
 This preview is **unsigned and unnotarized**. macOS may block its first launch. Automatic updates are disabled; install newer previews manually. The `LOCAL-TEST` download name identifies this build type.
 
-The existing **Windows v1.0.2** release remains available separately; a Windows version 2 installer has not been published. Current version 2 source and Windows handoff notes live in the [development repository](https://github.com/ohtway/UC-Merced-Dining-Menu-Card-App-Dev/tree/agent/electron-main-ui).
+The existing **Windows v1.0.2** release remains available separately. Version 2 development and handoff notes live in the [development repository](https://github.com/ohtway/UC-Merced-Dining-Menu-Card-App-Dev).
 
 ## Legacy Windows v1.0.2 reference
 
-The screenshots, browser-based instructions, and Java build notes below describe the older Windows application, not the Mac preview above.
+The screenshots, browser-based instructions, and Java build notes below describe the older Windows application, not the version 2 previews above.
 
 ![Menu Card Maker](https://github.com/user-attachments/assets/a42f2fff-e88c-4497-acef-34c78aa4a19d)
 ![Menu Card Maker (1)](https://github.com/user-attachments/assets/e6793137-4001-43f1-af8c-858b28f3a19a)
